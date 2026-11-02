@@ -39,7 +39,10 @@
         <span class="lcam-panel-label">05 / IA OPCIONAL</span>
         <details class="lcam-ai-details">
           <summary>Modelos ONNX locais <span class="lcam-experimental">EXPERIMENTAL</span></summary>
-          <p>O L-CAM não distribui pesos neurais. Carregue um manifesto JSON de um modelo licenciado e verificado; não há download automático.</p>
+          <p id="lcam-scunet-status">SCUNet Real-PSNR: verificando se está instalado...</p>
+          <div class="lcam-model-buttons"><button type="button" id="lcam-scunet-activate" disabled>Ativar SCUNet Real-PSNR</button></div>
+          <p>O SCUNet usa blocos sobrepostos na resolução original da câmera. Pode ser mais lento em GPUs de 4 GB. Os pesos são instalados por script, não são baixados pela janela.</p>
+          <p>Para outros modelos, informe um manifesto JSON de pesos com licença verificada.</p>
           <label for="lcam-model-manifest">Caminho do manifesto .json</label>
           <input id="lcam-model-manifest" type="text" placeholder="C:\\Modelos\\meu-modelo.json" spellcheck="false">
           <label for="lcam-model-provider">Execução preferida</label>
