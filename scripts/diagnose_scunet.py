@@ -153,6 +153,8 @@ def main() -> None:
     print("A presença de DmlExecutionProvider não prova que a GTX 1650 executou a rede.", flush=True)
     if not any(x["ok"] and x["provider"] == "directml" for x in report["checks"]):
         print("[AVISO] Nenhuma execução DirectML passou. Não ative SCUNet via GPU no L-CAM ainda.", flush=True)
+        raise SystemExit(2)
+    print("[OK] Ao menos um adaptador DirectML passou; use o device_id aprovado na interface.", flush=True)
 
 
 if __name__ == "__main__":
