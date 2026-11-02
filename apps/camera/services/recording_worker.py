@@ -160,5 +160,6 @@ class RecordingWorker:
                 "duplicated_record_frames": self._duplicated,
                 "error": self._error,
                 "record_fps": self._fps,
+                "first_video_frame_at": self._started_at,
                 "queued": self._queue.qsize() if self._queue is not None else 0,
             }
