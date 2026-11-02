@@ -1,14 +1,34 @@
+<!-- Vela renders this as a route fragment; the Vela shell owns the page. -->
 <link rel="stylesheet" href="{{ static('camera/css/app.css') }}">
-<main class="studio">
-  <header><div class="brand"><span class="brand-mark">◉</span> L-CAM <small>STUDIO</small></div><span class="pill">● Vela Desktop</span></header>
-  <div class="workspace">
-    <section class="preview">
-      <div class="preview-title"><h1>Camera Studio</h1><span id="status">Câmera desligada</span></div>
-      <div class="video-shell"><video id="video" autoplay playsinline muted></video><div id="placeholder">Selecione uma câmera para começar</div></div>
-      <div class="toolbar"><button id="start">Ativar câmera</button><button id="stop" disabled>Desativar</button><button id="record" disabled>● Gravar</button><button id="finish" disabled>■ Parar gravação</button></div>
-      <p id="message" role="status" aria-live="polite">Pronto para iniciar.</p>
-    </section>
-    <aside><h2>Dispositivos</h2><label for="device">Câmera</label><select id="device"><option value="">Padrão do sistema</option></select><h2>Imagem</h2><p>Os filtros de processamento nativo serão conectados ao pipeline Python.</p><h2>Gravação</h2><p>Prévia e gravação de teste no navegador integrado, quando suportado.</p></aside>
+<section class="lcam-app" id="lcam-app">
+  <header class="lcam-topbar">
+    <div class="lcam-brand"><span class="lcam-symbol">◉</span><strong>L-CAM</strong><span class="lcam-edition">STUDIO</span></div>
+    <div class="lcam-top-actions"><span class="lcam-runtime" id="lcam-runtime">Conectando ao Vela…</span><span class="lcam-version">Preview 0.1</span></div>
+  </header>
+  <div class="lcam-workspace">
+    <main class="lcam-stage">
+      <div class="lcam-heading"><div><span class="lcam-eyebrow">LIVE WORKSPACE</span><h1>Estúdio de câmera</h1></div><span id="lcam-status" class="lcam-status">● Desligada</span></div>
+      <div class="lcam-viewport" id="lcam-viewport">
+        <img id="lcam-frame" alt="Prévia ao vivo da webcam" hidden>
+        <div id="lcam-empty" class="lcam-empty"><span class="lcam-empty-icon">◎</span><strong>Sua câmera, com mais controle.</strong><span>Ative a câmera para iniciar a prévia processada no Python.</span></div>
+        <span id="lcam-live" class="lcam-live" hidden>● AO VIVO</span>
+      </div>
+      <div class="lcam-controls">
+        <div class="lcam-control-group"><button id="lcam-start" class="lcam-primary">Ativar câmera</button><button id="lcam-stop" disabled>Desativar</button></div>
+        <div class="lcam-control-group"><button id="lcam-record" class="lcam-record" disabled>● Gravar vídeo</button><button id="lcam-finish" disabled>■ Finalizar</button></div>
+      </div>
+      <p id="lcam-message" class="lcam-message" role="status" aria-live="polite">A prévia utiliza OpenCV nativo via bridge do Vela.</p>
+    </main>
+    <aside class="lcam-sidebar">
+      <section class="lcam-panel"><span class="lcam-panel-label">01 / DISPOSITIVO</span><h2>Entrada de vídeo</h2><label for="lcam-device">Câmera</label><select id="lcam-device"><option value="0">Câmera padrão (0)</option><option value="1">Câmera alternativa (1)</option><option value="2">Câmera alternativa (2)</option></select></section>
+      <section class="lcam-panel"><span class="lcam-panel-label">02 / IMAGEM</span><h2>Ajustes em tempo real</h2>
+        <label for="lcam-brightness">Brilho <output id="lcam-brightness-val">0</output></label><input type="range" id="lcam-brightness" min="-100" max="100" value="0" step="1">
+        <label for="lcam-contrast">Contraste <output id="lcam-contrast-val">1.0</output></label><input type="range" id="lcam-contrast" min="0" max="3" value="1" step=".1">
+        <label for="lcam-saturation">Saturação <output id="lcam-saturation-val">1.0</output></label><input type="range" id="lcam-saturation" min="0" max="3" value="1" step=".1">
+        <label class="lcam-check"><input type="checkbox" id="lcam-denoise"> Suavizar ruído</label>
+      </section>
+      <section class="lcam-panel"><span class="lcam-panel-label">03 / SAÍDA</span><h2>Gravação</h2><p>MP4 local em <code>Vídeos/L-CAM</code>.</p><p class="lcam-notice">Versão inicial: grava vídeo sem áudio. IA e câmera virtual ainda não estão implementadas.</p></section>
+    </aside>
   </div>
-</main>
+</section>
 <script src="{{ static('camera/js/app.js') }}"></script>
