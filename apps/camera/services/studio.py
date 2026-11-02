@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 
-import cv2
-
+from .contracts import CameraSource, FrameProcessor, PreviewEncoder, RecordingSink
+from .encoding import JpegPreviewEncoder
 from .capture import CameraCapture
 from .filters import BasicEnhancer, ImageSettings
 from .recorder import VideoRecorder
@@ -24,10 +24,17 @@ class CameraStudio:
     para gravação com sincronização de áudio é uma etapa futura.
     """
 
-    def __init__(self, camera=None, processor=None, recorder=None):
+    def __init__(
+        self,
+        camera: CameraSource | None = None,
+        processor: FrameProcessor | None = None,
+        recorder: RecordingSink | None = None,
+        encoder: PreviewEncoder | None = None,
+    ):
         self._camera = camera if camera is not None else CameraCapture()
         self._processor = processor if processor is not None else BasicEnhancer()
         self._recorder = recorder if recorder is not None else VideoRecorder()
+        self._encoder = encoder if encoder is not None else JpegPreviewEncoder(86)
         self._settings = ImageSettings()
         self._lock = threading.RLock()
         self._active = False
@@ -87,11 +94,7 @@ class CameraStudio:
             if self._recorder.recording:
                 self._recorder.write(processed)
             preview = original if original_preview else processed
-            ok, encoded = cv2.imencode(
-                ".jpg", preview, [cv2.IMWRITE_JPEG_QUALITY, 86]
-            )
-            if not ok:
-                raise RuntimeError("Não foi possível codificar o quadro.")
+            encoded = self._encoder.encode(preview)
 
             now = perf_counter()
             self._timestamps.append(now)
@@ -101,7 +104,7 @@ class CameraStudio:
             else:
                 fps = 0.0
             return {
-                "image": "data:image/jpeg;base64," + base64.b64encode(encoded.tobytes()).decode("ascii"),
+                "image": "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii"),
                 "width": int(preview.shape[1]),
                 "height": int(preview.shape[0]),
                 "recording": self._recorder.recording,
