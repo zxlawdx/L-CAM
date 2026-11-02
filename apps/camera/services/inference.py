@@ -34,6 +34,10 @@ class OnnxModelSpec:
     output_kind: str = "enhanced"
     input_width: int | None = None
     input_height: int | None = None
+    external_data: dict[str, str] | None = None
+    tile_size: int | None = None
+    tile_overlap: int = 32
+    input_alignment: int = 1
 
     @classmethod
     def load(cls, manifest: str | Path) -> "OnnxModelSpec":
@@ -48,6 +52,7 @@ class OnnxModelSpec:
         allowed = {
             "name", "task", "model_path", "sha256", "license", "source",
             "layout", "output_kind", "input_width", "input_height",
+            "external_data", "tile_size", "tile_overlap", "input_alignment",
         }
         if set(data) - allowed:
             raise ValueError("Campos desconhecidos no manifest.")
@@ -66,6 +71,10 @@ class OnnxModelSpec:
             output_kind=data.get("output_kind", "enhanced"),
             input_width=data.get("input_width"),
             input_height=data.get("input_height"),
+            external_data=data.get("external_data"),
+            tile_size=data.get("tile_size"),
+            tile_overlap=data.get("tile_overlap", 32),
+            input_alignment=data.get("input_alignment", 1),
         )
         spec.validate()
         return spec
@@ -94,6 +103,41 @@ class OnnxModelSpec:
                 digest.update(chunk)
         if digest.hexdigest() != self.sha256:
             raise ValueError("SHA-256 do ONNX não confere com o manifest.")
+        # ONNX external tensor files must be authenticated too. Validating only
+        # the tiny .onnx graph would leave ~73 MB of unverified neural weights.
+        if self.external_data is not None:
+            if not isinstance(self.external_data, dict) or len(self.external_data) > 8:
+                raise ValueError("Lista de dados externos ONNX inválida.")
+            for filename, expected in self.external_data.items():
+                if (
+                    not isinstance(filename, str)
+                    or filename in (".", "..")
+                    or Path(filename).name != filename
+                    or not filename.endswith(".onnx.data")
+                    or not isinstance(expected, str)
+                    or len(expected) != 64
+                    or any(ch not in "0123456789abcdef" for ch in expected.lower())
+                ):
+                    raise ValueError("Nome/hash de tensor ONNX externo inválido.")
+                asset = self.model_path.parent / filename
+                if not asset.is_file() or not 0 < asset.stat().st_size <= _MAX_MODEL_BYTES:
+                    raise ValueError("Dados externos ONNX ausentes ou fora dos limites: " + filename)
+                file_hash = hashlib.sha256()
+                with asset.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        file_hash.update(chunk)
+                if file_hash.hexdigest() != expected.lower():
+                    raise ValueError("SHA-256 do tensor ONNX externo inválido: " + filename)
+        if type(self.input_alignment) is not int or self.input_alignment < 1 or self.input_alignment > 64 or self.input_alignment & (self.input_alignment - 1):
+            raise ValueError("Alinhamento ONNX deve ser potência de 2 entre 1 e 64.")
+        if self.tile_size is not None:
+            if type(self.tile_size) is not int or not 64 <= self.tile_size <= 1024 or self.tile_size % self.input_alignment:
+                raise ValueError("tile_size deve estar alinhado e entre 64 e 1024.")
+            if type(self.tile_overlap) is not int or not 8 <= self.tile_overlap < self.tile_size // 2:
+                raise ValueError("tile_overlap deve estar entre 8 e metade do bloco.")
+            if self.input_width is not None or self.input_height is not None:
+                raise ValueError("Modelos em blocos usam dimensões dinâmicas, não input_width/height.")
+
 
 
 class OnnxRuntimeEngine:
@@ -173,7 +217,7 @@ class OnnxRuntimeEngine:
         if getattr(inputs[0], "type", "tensor(float)") != "tensor(float)":
             raise ValueError("Neste estágio, a entrada ONNX deve ser float32.")
 
-    def enhance(self, frame: np.ndarray) -> np.ndarray:
+    def _enhance_single(self, frame: np.ndarray) -> np.ndarray:
         if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
             raise ValueError("Quadro de inferência precisa ser BGR uint8.")
         original_h, original_w = frame.shape[:2]
@@ -205,3 +249,62 @@ class OnnxRuntimeEngine:
         if enhanced.shape[:2] != (original_h, original_w):
             enhanced = cv2.resize(enhanced, (original_w, original_h), interpolation=cv2.INTER_LINEAR)
         return cv2.cvtColor(enhanced, cv2.COLOR_RGB2BGR)
+
+    @staticmethod
+    def _tile_starts(length: int, tile: int, overlap: int) -> list[int]:
+        if length <= tile:
+            return [0]
+        stride = tile - 2 * overlap
+        result = list(range(0, length - tile + 1, stride))
+        if result[-1] != length - tile:
+            result.append(length - tile)
+        return result
+
+    def _enhance_tiled(self, frame: np.ndarray) -> np.ndarray:
+        """Run at camera-native resolution using bounded overlapping tiles.
+
+        No 320x180 downscale. Feathered tile blending avoids visible seams;
+        output is cropped back to the exact captured dimensions.
+        """
+        if not isinstance(frame, np.ndarray) or frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+            raise ValueError("Quadro de inferência precisa ser BGR uint8.")
+        h, w = frame.shape[:2]
+        tile = self.spec.tile_size
+        overlap = self.spec.tile_overlap
+        alignment = self.spec.input_alignment
+        H = max(tile, ((h + alignment - 1) // alignment) * alignment)
+        W = max(tile, ((w + alignment - 1) // alignment) * alignment)
+        pad_mode = "reflect" if min(h, w) > 1 else "edge"
+        padded = np.pad(frame, ((0, H - h), (0, W - w), (0, 0)), mode=pad_mode)
+        total = np.zeros((H, W, 3), dtype=np.float32)
+        weights = np.zeros((H, W, 1), dtype=np.float32)
+        xs = self._tile_starts(W, tile, overlap)
+        ys = self._tile_starts(H, tile, overlap)
+
+        for y in ys:
+            for x in xs:
+                region = padded[y:y + tile, x:x + tile]
+                denoised = self._enhance_single(region)
+                if denoised.shape != region.shape:
+                    raise RuntimeError("ONNX retornou resolução inesperada para bloco.")
+                wy = np.ones(tile, dtype=np.float32)
+                wx = np.ones(tile, dtype=np.float32)
+                if y > 0:
+                    wy[:overlap] = np.linspace(0.02, 1.0, overlap)
+                if y + tile < H:
+                    wy[-overlap:] = np.linspace(1.0, 0.02, overlap)
+                if x > 0:
+                    wx[:overlap] = np.linspace(0.02, 1.0, overlap)
+                if x + tile < W:
+                    wx[-overlap:] = np.linspace(1.0, 0.02, overlap)
+                weight = (wy[:, None] * wx[None, :])[:, :, None]
+                total[y:y + tile, x:x + tile] += denoised.astype(np.float32) * weight
+                weights[y:y + tile, x:x + tile] += weight
+
+        result = np.clip(total / np.maximum(weights, 1e-7), 0, 255)
+        return result[:h, :w].astype(np.uint8)
+
+    def enhance(self, frame: np.ndarray) -> np.ndarray:
+        if self.spec.tile_size is not None:
+            return self._enhance_tiled(frame)
+        return self._enhance_single(frame)
