@@ -73,3 +73,23 @@ Ou, para testar um MP4 já gravado, sem precisar ligar a webcam:
 Os PNGs ficam em Pictures/L-CAM/Comparisons: imagem original, SCUNet e montagem lado a lado. O original é salvo sem alterações. A inferência pode levar muitos segundos; isso não é um teste de FPS em streaming.
 
 O primeiro teste de inferência **real** com os pesos ONNX (GitHub Actions Linux, CPU) passou em 02/11/2026. Para 256×256 em CPU de CI: aquecimento 1,84 s e quadro posterior 1,76 s. Esses números não representam a GTX 1650 e justificam a comparação por foto antes de prometer tempo real.
+
+## Quando o instalador informa "benchmark GPU falhou"
+
+Esse aviso **não** significa que o download falhou: os hashes dos arquivos podem estar íntegros e o provedor DmlExecutionProvider disponível, mas a inferência real pode falhar por drivers, incompatibilidades de operadores, seleção errada da GPU ou falta de VRAM.
+
+**Não reexecute todo o instalador para investigar.** Após atualizar a branch, com a webcam fechada, rode:
+
+    python -u -m scripts.diagnose_scunet
+
+O diagnóstico verifica o manifesto, executa **CPU, DirectML adaptador 0 e DirectML adaptador 1 em processos independentes**, usando blocos 256×256, e registra erro/retorno nativo mesmo que o ONNX Runtime derrube um subprocesso. O relatório fica em `logs/scunet-diagnostic-YYYYMMDD-HHMMSS.json`. Envie a saída do terminal para identificar a causa.
+
+Para investigar um adaptador isoladamente:
+
+    python -u -X faulthandler -m scripts.benchmark_scunet --provider directml --dml-device-id 1 --tile-size 256 --width 256 --height 256 --frames 1
+
+Se o adaptador 1 passar e o 0 falhar, selecione **DirectML — adaptador 1** no painel Vela antes de ativar o SCUNet. O índice não é necessariamente o mesmo listado pelo nvidia-smi; notebooks com GPU integrada e NVIDIA dedicada podem apresentar adaptadores diferentes. O L-CAM agora mostra o índice escolhido no status da IA.
+
+**Não tente forçar o SCUNet na interface antes de uma inferência DirectML passar no diagnóstico**: uma falha nativa do ONNX Runtime no processo principal pode encerrar todo o aplicativo. Se CPU passar e DirectML falhar, a rede ONNX e os pesos são utilizáveis, mas a rota GPU precisa de correção; SCUNet na CPU ainda será provavelmente lento demais para prévia em tempo real.
+
+A documentação do DirectML exige memória-pattern desligada e modo sequencial, que o adaptador do L-CAM configura. A mera presença de `DmlExecutionProvider` não valida execução do modelo.
