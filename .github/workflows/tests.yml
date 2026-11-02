@@ -29,6 +29,10 @@ jobs:
         run: python -m compileall -q config apps manage.py
       - name: Test business logic
         run: python -m pytest -q
+      - name: Validate frontend JavaScript syntax
+        run: node --check apps/camera/static/js/app.js
+      - name: Smoke-test adaptive image pipeline
+        run: python -m scripts.benchmark_image --width 160 --height 120 --frames 3
       - name: Check official Vela command dispatcher
         run: python manage.py version
       - name: Check application routes
