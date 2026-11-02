@@ -114,6 +114,14 @@ class AsyncFinalizer:
         self._thread.start()
         return self.status()
 
+    def wait(self, timeout: float = 12.0) -> dict:
+        """Give a pending mux time to finish during Vela shutdown."""
+        with self._lock:
+            thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=timeout)
+        return self.status()
+
     def status(self) -> dict:
         with self._lock:
             return dict(self._state)
