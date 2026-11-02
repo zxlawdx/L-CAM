@@ -42,7 +42,7 @@ class RealtimePipeline:
         self._capture_times = deque(maxlen=60)
         self._process_times = deque(maxlen=60)
         self._stats_lock = threading.Lock()
-        self._needs_reset = False
+        self._needs_reset = True
 
     @staticmethod
     def _fps(timestamps) -> float:
@@ -103,6 +103,8 @@ class RealtimePipeline:
                         self._camera.start()
                         with self._stats_lock:
                             self._reconnects += 1
+                        with self._settings_lock:
+                            self._needs_reset = True
                     except Exception as restart_error:
                         logger.warning("Reconexão falhou: %s", restart_error)
                     continue
