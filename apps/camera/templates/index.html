@@ -56,7 +56,11 @@
           <p id="lcam-model-status" class="lcam-model-status" role="status" aria-live="polite">IA desligada — processamento clássico ativo.</p>
         </details>
       </section>
-      <section class="lcam-panel"><span class="lcam-panel-label">04 / SAÍDA</span><h2>Gravação</h2><p>MP4 local em <code>Vídeos/L-CAM</code>.</p><p class="lcam-notice">Melhoria clássica de imagem (CPU). IA neural, áudio e câmera virtual ainda não estão implementados. Use uma luz frontal para melhores resultados.</p></section>
+      <section class="lcam-panel"><span class="lcam-panel-label">04 / SAÍDA</span><h2>Gravação</h2>
+        <label for="lcam-microphone">Microfone</label>
+        <select id="lcam-microphone"><option value="-1">Sem áudio (somente vídeo)</option></select>
+        <p id="lcam-audio-help">Com microfone: necessita sounddevice e FFmpeg instalados.</p>
+        <p>MP4 local em <code>Vídeos/L-CAM</code>.</p><p class="lcam-notice">Microfone e mux H.264/AAC são opcionais/experimentais. Sem FFmpeg ou sounddevice, use gravação sem áudio. Câmera virtual ainda não está implementada.</p></section>
     </aside>
   </div>
 </section>
