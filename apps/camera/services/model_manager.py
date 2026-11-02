@@ -92,7 +92,7 @@ class AsyncModelManager:
     def load(self, manifest_path: str, preference: str = "auto") -> dict:
         if not isinstance(manifest_path, str) or not 1 <= len(manifest_path) <= 4096:
             raise ValueError("Caminho do manifest inválido.")
-        if preference not in ("auto", "cpu", "cuda", "directml"):
+        if preference not in ("auto", "cpu", "cuda", "directml", "directml:0", "directml:1"):
             raise ValueError("Provedor inválido.")
         with self._lock:
             if self._closed:
