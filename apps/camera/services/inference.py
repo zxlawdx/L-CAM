@@ -132,6 +132,13 @@ class OnnxRuntimeEngine:
             raise RuntimeError("Não foi possível carregar ONNX: " + " | ".join(errors)[:1000])
         self._input_name = self._session.get_inputs()[0].name
         self._output_name = self._session.get_outputs()[0].name
+        input_dims = self._session.get_inputs()[0].shape
+        self._fixed_height = input_dims[2 if spec.layout == "NCHW" else 1]
+        self._fixed_width = input_dims[3 if spec.layout == "NCHW" else 2]
+        if spec.input_width is not None and isinstance(self._fixed_width, int) and spec.input_width != self._fixed_width:
+            raise ValueError("Largura do manifesto incompatível com o tensor ONNX.")
+        if spec.input_height is not None and isinstance(self._fixed_height, int) and spec.input_height != self._fixed_height:
+            raise ValueError("Altura do manifesto incompatível com o tensor ONNX.")
 
     @staticmethod
     def _provider_order(preference: str, available: set[str]) -> list[str]:
@@ -170,8 +177,8 @@ class OnnxRuntimeEngine:
         if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
             raise ValueError("Quadro de inferência precisa ser BGR uint8.")
         original_h, original_w = frame.shape[:2]
-        target_w = self.spec.input_width or original_w
-        target_h = self.spec.input_height or original_h
+        target_w = self.spec.input_width or (self._fixed_width if isinstance(self._fixed_width, int) and self._fixed_width > 0 else original_w)
+        target_h = self.spec.input_height or (self._fixed_height if isinstance(self._fixed_height, int) and self._fixed_height > 0 else original_h)
         resized = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA) if (target_w, target_h) != (original_w, original_h) else frame
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         tensor = rgb.astype(np.float32) / 255.0
