@@ -25,6 +25,15 @@ def serve(manifest: str, provider: str) -> int:
         spec = OnnxModelSpec.load(manifest)
         # This is the ONLY process allowed to initialize an ONNX session.
         engine = OnnxRuntimeEngine(spec, preference=provider)
+        # The first actual GPU Run() can terminate Python natively on some
+        # drivers. Execute a full single-tile warmup BEFORE reporting ready,
+        # while Vela continues capturing frames with the classical filter.
+        side = spec.tile_size or min(spec.input_width or 128, spec.input_height or 128)
+        side = max(64, side)
+        sample = np.full((side, side, 3), 80, dtype=np.uint8)
+        output = engine.enhance(sample)
+        if output.shape != sample.shape:
+            raise RuntimeError("ONNX warmup retornou dimensões inesperadas.")
         send_packet(writer, {
             "ok": True, "type": "ready",
             "provider": engine.provider,
