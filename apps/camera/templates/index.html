@@ -1,0 +1,42 @@
+<!-- Vela renders this as a route fragment; the Vela shell owns the page. -->
+<link rel="stylesheet" href="{{ static('camera/css/app.css') }}">
+<section class="lcam-app" id="lcam-app">
+  <header class="lcam-topbar">
+    <div class="lcam-brand"><span class="lcam-symbol">◉</span><strong>L-CAM</strong><span class="lcam-edition">STUDIO</span></div>
+    <div class="lcam-top-actions"><span class="lcam-runtime" id="lcam-runtime">Conectando ao Vela…</span><span class="lcam-version">Preview 0.1</span></div>
+  </header>
+  <div class="lcam-workspace">
+    <main class="lcam-stage">
+      <div class="lcam-heading"><div><span class="lcam-eyebrow">LIVE WORKSPACE</span><h1>Estúdio de câmera</h1></div><span id="lcam-status" class="lcam-status">● Desligada</span></div>
+      <div class="lcam-viewport" id="lcam-viewport">
+        <img id="lcam-frame" alt="Prévia ao vivo da webcam" hidden>
+        <div id="lcam-empty" class="lcam-empty"><span class="lcam-empty-icon">◎</span><strong>Sua câmera, com mais controle.</strong><span>Ative a câmera para iniciar a prévia processada no Python.</span></div>
+        <span id="lcam-live" class="lcam-live" hidden>● AO VIVO</span>
+      </div>
+      <div class="lcam-metrics" aria-label="Desempenho da prévia"><span id="lcam-resolution">— resolução</span><span id="lcam-fps">— FPS</span><span id="lcam-processing">— ms/processamento</span></div>
+      <div class="lcam-controls">
+        <div class="lcam-control-group"><button id="lcam-start" class="lcam-primary">Ativar câmera</button><button id="lcam-stop" disabled>Desativar</button><button id="lcam-compare" aria-pressed="false" disabled>Ver original</button></div>
+        <div class="lcam-control-group"><button id="lcam-record" class="lcam-record" disabled>● Gravar vídeo</button><button id="lcam-finish" disabled>■ Finalizar</button></div>
+      </div>
+      <p id="lcam-message" class="lcam-message" role="status" aria-live="polite">A prévia utiliza OpenCV nativo via bridge do Vela.</p>
+    </main>
+    <aside class="lcam-sidebar">
+      <section class="lcam-panel"><span class="lcam-panel-label">01 / DISPOSITIVO</span><h2>Entrada de vídeo</h2><label for="lcam-device">Câmera</label><select id="lcam-device"><option value="0">Câmera padrão (0)</option><option value="1">Câmera alternativa (1)</option><option value="2">Câmera alternativa (2)</option></select></section>
+      <section class="lcam-panel"><span class="lcam-panel-label">02 / APRIMORAMENTO</span><h2>Melhoria de imagem</h2>
+        <label for="lcam-mode">Modo de processamento</label><select id="lcam-mode"><option value="auto" selected>Automático (recomendado)</option><option value="low_light">Baixa luminosidade</option><option value="balanced">Natural / equilibrado</option><option value="off">Original / sem aprimoramento</option></select>
+        <label class="lcam-spaced-label" for="lcam-strength">Intensidade <output id="lcam-strength-val">70%</output></label><input type="range" id="lcam-strength" min="0" max="100" value="70" step="5">
+        <label for="lcam-sharpness">Nitidez <output id="lcam-sharpness-val">10%</output></label><input type="range" id="lcam-sharpness" min="0" max="100" value="10" step="5">
+        <p class="lcam-mode-help" id="lcam-mode-help">Ajusta sombras automaticamente sem exagerar no contraste.</p>
+      </section>
+      <section class="lcam-panel"><span class="lcam-panel-label">03 / AJUSTE FINO</span><h2>Ajustes em tempo real</h2>
+        <label for="lcam-brightness">Brilho <output id="lcam-brightness-val">0</output></label><input type="range" id="lcam-brightness" min="-100" max="100" value="0" step="1">
+        <label for="lcam-contrast">Contraste <output id="lcam-contrast-val">1.0</output></label><input type="range" id="lcam-contrast" min="0" max="3" value="1" step=".1">
+        <label for="lcam-saturation">Saturação <output id="lcam-saturation-val">1.0</output></label><input type="range" id="lcam-saturation" min="0" max="3" value="1" step=".1">
+        <label class="lcam-check"><input type="checkbox" id="lcam-denoise" checked> Reduzir ruído de cor e textura</label>
+        <button type="button" class="lcam-reset" id="lcam-reset">Restaurar ajustes</button>
+      </section>
+      <section class="lcam-panel"><span class="lcam-panel-label">04 / SAÍDA</span><h2>Gravação</h2><p>MP4 local em <code>Vídeos/L-CAM</code>.</p><p class="lcam-notice">Melhoria clássica de imagem (CPU). IA neural, áudio e câmera virtual ainda não estão implementados. Use uma luz frontal para melhores resultados.</p></section>
+    </aside>
+  </div>
+</section>
+<script src="{{ static('camera/js/app.js') }}"></script>

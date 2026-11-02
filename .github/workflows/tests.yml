@@ -1,0 +1,48 @@
+name: L-CAM — Vela startup and tests
+
+on:
+  push:
+    branches: [main, "feat/lcam-initial"]
+  pull_request:
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.14"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project and Vela
+        run: python -m pip install -r requirements.txt
+      - name: Check Python compilation
+        run: python -m compileall -q config apps manage.py
+      - name: Test business logic
+        run: python -m pytest -q
+      - name: Validate frontend JavaScript syntax
+        run: node --check apps/camera/static/js/app.js
+      - name: Smoke-test adaptive image pipeline
+        run: python -m scripts.benchmark_image --width 160 --height 120 --frames 3
+      - name: Check official Vela command dispatcher
+        run: python manage.py version
+      - name: Check application routes
+        run: python manage.py routes
+      - name: Collect assets with official Vela pipeline
+        run: python manage.py collectstatic --no-tailwind --no-install
+      - name: Check collected camera assets
+        shell: python
+        run: |
+          from pathlib import Path
+          assert Path("staticfiles/camera/css/app.css").is_file()
+          assert Path("staticfiles/camera/js/app.js").is_file()
+          assert Path("staticfiles/home/starter.css").is_file()

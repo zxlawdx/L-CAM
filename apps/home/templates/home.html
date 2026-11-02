@@ -1,0 +1,180 @@
+<!-- Starter view: the Vela shell owns the document and WebView. -->
+<style>@import url("{{ static('home/starter.css') }}");</style>
+<div class="vela-starter" id="vela-starter">
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="Aplicação Vela">
+        <svg class="brand-mark" viewBox="0 0 28 32" aria-hidden="true">
+          <path d="M5 27h18M7 29h14M14 3v23M12 6C11 10 7 12 5 13l7 1V6ZM16 7c1 4 4 7 7 9l-7-1V7Z"
+                fill="none" stroke="currentColor" stroke-width="1.7"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+
+        <div class="brand-copy">
+          <span class="app-name">{{ app_title }}</span>
+          <span class="framework-label">Vela application</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <span id="runtime-status" class="runtime-status" data-state="waiting" role="status">Conectando ao Python…</span>
+
+        <button id="theme-toggle"
+                class="theme-button"
+                type="button"
+                aria-label="Alternar tema"
+                aria-pressed="false">
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 15.3A8 8 0 0 1 8.7 4a8 8 0 1 0 11.3 11.3Z"/>
+          </svg>
+          <span id="theme-label">Dark</span>
+        </button>
+      </div>
+    </header>
+
+    <div>
+      <main>
+        <section class="hero" aria-labelledby="welcome-title">
+          <div class="vela-emblem" aria-hidden="true">
+            <svg viewBox="0 0 28 32">
+              <path d="M5 27h18M7 29h14M14 3v23M12 6C11 10 7 12 5 13l7 1V6ZM16 7c1 4 4 7 7 9l-7-1V7Z"
+                    fill="none" stroke="currentColor" stroke-width="1.7"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+
+          <p class="eyebrow">Vela Framework</p>
+          <h1 id="welcome-title">Welcome to Vela</h1>
+          <p class="subtitle">
+            Seu aplicativo desktop está rodando. Esta tela é o ponto de partida:
+            edite o projeto, conecte sua lógica Python e construa a interface do seu jeito.
+          </p>
+
+          <div class="ready-row">
+            <span class="ready-pill" id="ready-pill" data-state="waiting">
+              <span class="ready-dot"></span>
+              <span id="ready-label">Verificando runtime</span>
+            </span>
+            <span id="bridge-status">Aguardando bridge Python ↔ JavaScript</span>
+          </div>
+        </section>
+
+        <section class="workspace" aria-label="Primeiros passos">
+          <article class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <strong>Demo</strong>
+                <span class="panel-kicker">Bridge example</span>
+              </div>
+              <span class="panel-kicker">Python ↔ JS</span>
+            </div>
+
+            <div class="panel-body">
+              <div class="counter-demo">
+                <div>
+                  <p class="counter-label">Counter</p>
+                  <p id="counter-value" class="counter-value" aria-live="polite">0</p>
+                  <p class="counter-description">
+                    Um exemplo pequeno para validar eventos e comunicação com o backend
+                    sem transformar o starter em um tutorial gigante.
+                  </p>
+                </div>
+
+                <button disabled id="increment-button" class="primary-button" type="button">
+                  Increment
+                </button>
+              </div>
+
+              <button id="retry-bridge" class="theme-button" type="button" hidden>Tentar conexão novamente</button>
+              <p id="counter-error" class="counter-error" role="status" aria-live="polite"></p>
+              <div class="bridge-line">
+                <code>frontend</code>
+                <span class="bridge-arrow">→</span>
+                <code>Vela bridge</code>
+                <span class="bridge-arrow">→</span>
+                <code>Python</code>
+              </div>
+            </div>
+          </article>
+
+          <aside class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <strong>Start building</strong>
+              </div>
+              <span class="panel-kicker">Quick links</span>
+            </div>
+
+            <div class="panel-body">
+              <nav class="start-list" aria-label="Links de início">
+                <a class="start-link" href="https://github.com/zxlawdx/Vela-framework/tree/main/docs" data-action="docs">
+                  <span class="start-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/>
+                      <path d="M4 5.5v16M8 7h8M8 11h6"/>
+                    </svg>
+                  </span>
+                  <span class="start-copy">
+                    <strong>Documentation</strong>
+                    <span>Leia os conceitos e APIs do Vela.</span>
+                  </span>
+                  <span class="chevron">›</span>
+                </a>
+
+                <a class="start-link" href="https://github.com/zxlawdx/Vela-framework/blob/main/docs/API.md" data-action="examples">
+                  <span class="start-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m9 18-6-6 6-6M15 6l6 6-6 6M14 4l-4 16"/>
+                    </svg>
+                  </span>
+                  <span class="start-copy">
+                    <strong>Examples</strong>
+                    <span>Veja exemplos de código das APIs do Vela.</span>
+                  </span>
+                  <span class="chevron">›</span>
+                </a>
+
+                <button type="button" class="start-link" data-action="project">
+                  <span class="start-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 6.5h7l2 2h9v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6.5Z"/>
+                    </svg>
+                  </span>
+                  <span class="start-copy">
+                    <strong>Open project</strong>
+                    <span>Abra a pasta do projeto e comece a editar.</span>
+                  </span>
+                  <span class="chevron">›</span>
+                </button>
+              </nav>
+            </div>
+          </aside>
+        </section>
+
+        <section class="editing-tip" aria-label="Dica para começar">
+          <div class="tip-copy">
+            <strong>Comece por aqui</strong>
+            <span>Substitua esta tela pelo seu app e mantenha apenas o que fizer sentido.</span>
+          </div>
+          <code class="file-path">apps/home/templates/home.html</code>
+        </section>
+      </main>
+
+      <footer>
+        <div class="footer-inner">
+          <span>Vela Framework</span>
+          <span class="footer-dot"></span>
+          <span>v{{ vela_version }}</span>
+          <span class="footer-dot"></span>
+          <span>Python + WebView</span>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+
+</div>
+<script src="{{ static('home/starter.js') }}"></script>

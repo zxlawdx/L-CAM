@@ -1,0 +1,230 @@
+/* L-CAM: thin Vela UI; all frame processing runs in CameraStudio (Python). */
+(() => {
+  const root = document.getElementById("lcam-app");
+  if (!root || root.dataset.mounted === "true") return;
+  root.dataset.mounted = "true";
+
+  const $ = id => root.querySelector("#lcam-" + id);
+  let disposed = false;
+  let ready = false;
+  let active = false;
+  let recording = false;
+  let originalPreview = false;
+  let previewTimer = null;
+  let adjustmentTimer = null;
+  let lastMetricsAt = 0;
+  const modes = {
+    auto: "Identifica pouca luz e corrige sombras de forma adaptativa.",
+    low_light: "Reforça iluminação de sombras, preservando realces quando possível.",
+    balanced: "Aumenta moderadamente o contraste local em ambientes iluminados.",
+    off: "Desliga o aprimoramento automático. Ajustes manuais continuam disponíveis."
+  };
+
+  function notify(message, isError = false) {
+    $("message").textContent = message;
+    $("message").classList.toggle("error", isError);
+  }
+  function status(message, state = "") {
+    $("status").textContent = message;
+    $("status").className = "lcam-status " + state;
+  }
+  function setControls() {
+    $("start").disabled = !ready || active;
+    $("stop").disabled = !active || recording;
+    $("record").disabled = !active || recording;
+    $("finish").disabled = !recording;
+    $("compare").disabled = !active;
+    $("device").disabled = active;
+  }
+  async function call(method, ...args) {
+    const api = window.pywebview?.api;
+    if (typeof api?.[method] !== "function") {
+      throw new Error("A bridge Python do Vela não está disponível.");
+    }
+    const result = await api[method](...args);
+    if (result?.ok === false) throw new Error(result.error || "Falha no backend.");
+    return result;
+  }
+  async function connect() {
+    try {
+      const pong = await call("ping");
+      if (pong !== "pong") throw new Error("Resposta inesperada da bridge.");
+      if (disposed) return;
+      ready = true;
+      $("runtime").textContent = "● Vela conectado";
+      setControls();
+    } catch (error) {
+      if (disposed) return;
+      ready = false;
+      $("runtime").textContent = "● Python indisponível";
+      notify(error.message, true);
+      setControls();
+    }
+  }
+  function settings() {
+    return {
+      brightness: Number($("brightness").value),
+      contrast: Number($("contrast").value),
+      saturation: Number($("saturation").value),
+      denoise: $("denoise").checked,
+      mode: $("mode").value,
+      strength: Number($("strength").value) / 100,
+      sharpness: Number($("sharpness").value) / 100
+    };
+  }
+  function labels() {
+    for (const name of ["brightness", "contrast", "saturation"]) {
+      $(name + "-val").textContent = $(name).value;
+    }
+    $("strength-val").textContent = $("strength").value + "%";
+    $("sharpness-val").textContent = $("sharpness").value + "%";
+    $("mode-help").textContent = modes[$("mode").value] || "";
+    $("strength").disabled = $("mode").value === "off" && !$("denoise").checked;
+  }
+  async function syncSettings() {
+    labels();
+    if (!ready) return;
+    try {
+      await call("camera_configure", settings());
+    } catch (error) {
+      if (!disposed) notify(error.message, true);
+    }
+  }
+  function metrics(result) {
+    const now = performance.now();
+    if (now - lastMetricsAt < 450) return;
+    lastMetricsAt = now;
+    $("resolution").textContent = result.width + " × " + result.height;
+    $("fps").textContent = result.preview_fps + " FPS";
+    $("processing").textContent = result.processing_ms + " ms/processamento";
+  }
+  async function preview() {
+    if (disposed || !active) return;
+    try {
+      const result = await call("camera_frame", originalPreview);
+      if (disposed || !active) return;
+      $("frame").src = result.image;
+      $("frame").hidden = false;
+      $("empty").hidden = true;
+      $("live").hidden = false;
+      metrics(result);
+    } catch (error) {
+      if (disposed || !active) return;
+      notify(error.message, true);
+      active = false;
+      recording = false;
+      setControls();
+      status("● Erro");
+      $("live").hidden = true;
+      try { await call("camera_stop"); } catch (_) { /* best effort */ }
+      return;
+    }
+    // Nunca acumular requisições: só pedir novo quadro após resposta da bridge.
+    if (!disposed && active) previewTimer = setTimeout(preview, 24);
+  }
+  async function start() {
+    $("start").disabled = true;
+    notify("Abrindo câmera nativa...");
+    try {
+      await call("camera_start", Number($("device").value));
+      await call("camera_configure", settings());
+      if (disposed) return;
+      active = true;
+      status("● Câmera ativa", "active");
+      notify("Prévia iniciada. Use Ver original para comparar sem alterar a gravação.");
+      setControls();
+      preview();
+    } catch (error) {
+      if (!disposed) notify(error.message, true);
+      active = false;
+      setControls();
+    }
+  }
+  async function stop() {
+    if (recording) return;
+    active = false;
+    clearTimeout(previewTimer);
+    setControls();
+    try { await call("camera_stop"); }
+    catch (error) { notify(error.message, true); }
+    $("frame").hidden = true;
+    $("frame").removeAttribute("src");
+    $("empty").hidden = false;
+    $("live").hidden = true;
+    $("resolution").textContent = "— resolução";
+    $("fps").textContent = "— FPS";
+    $("processing").textContent = "— ms/processamento";
+    status("● Desligada");
+    if (!disposed) notify("Câmera desligada.");
+  }
+  async function startRecording() {
+    $("record").disabled = true;
+    try {
+      const result = await call("camera_record_start");
+      recording = true;
+      status("● Gravando", "recording");
+      notify("Gravando MP4 sem áudio: " + result.path);
+      setControls();
+    } catch (error) {
+      notify(error.message, true);
+      setControls();
+    }
+  }
+  async function stopRecording() {
+    $("finish").disabled = true;
+    try {
+      const result = await call("camera_record_stop");
+      recording = false;
+      status("● Câmera ativa", "active");
+      notify("Vídeo salvo: " + result.path + " (sem áudio)");
+      setControls();
+    } catch (error) {
+      notify(error.message, true);
+      setControls();
+    }
+  }
+  function compare() {
+    originalPreview = !originalPreview;
+    $("compare").setAttribute("aria-pressed", String(originalPreview));
+    $("compare").textContent = originalPreview ? "Ver aprimorada" : "Ver original";
+  }
+  function reset() {
+    $("mode").value = "auto";
+    $("strength").value = "70";
+    $("sharpness").value = "10";
+    $("brightness").value = "0";
+    $("contrast").value = "1";
+    $("saturation").value = "1";
+    $("denoise").checked = true;
+    syncSettings();
+    notify("Ajustes restaurados para o modo automático.");
+  }
+
+  $("start").addEventListener("click", start);
+  $("stop").addEventListener("click", stop);
+  $("record").addEventListener("click", startRecording);
+  $("finish").addEventListener("click", stopRecording);
+  $("compare").addEventListener("click", compare);
+  $("reset").addEventListener("click", reset);
+  for (const name of ["mode", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
+    $(name).addEventListener("input", () => {
+      labels();
+      clearTimeout(adjustmentTimer);
+      adjustmentTimer = setTimeout(syncSettings, 140);
+    });
+  }
+  labels();
+  setControls();
+  window.addEventListener("pywebviewready", connect);
+  window.VelaPage = {
+    beforeUnmount() {
+      disposed = true;
+      active = false;
+      clearTimeout(previewTimer);
+      clearTimeout(adjustmentTimer);
+      const api = window.pywebview?.api;
+      if (typeof api?.camera_stop === "function") api.camera_stop().catch(() => {});
+    }
+  };
+  connect();
+})();
