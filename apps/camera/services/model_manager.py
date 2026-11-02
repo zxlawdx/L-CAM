@@ -6,6 +6,7 @@ import threading
 from dataclasses import replace
 
 import cv2
+import numpy as np
 
 from .filters import BasicEnhancer
 from .inference import OnnxModelSpec, OnnxRuntimeEngine
@@ -21,22 +22,52 @@ class NeuralEnhancementProcessor:
         self.classical = BasicEnhancer()
         self.task = engine.spec.task
 
+    @staticmethod
+    def _blend_denoised(frame, denoised, weight: float, low_resolution: bool):
+        """Keep native-size edges when a small neural input is upscaled.
+
+        The model still suppresses low-frequency noise in uniform areas. Hair,
+        glasses and lettering retain more of the camera's real luminance detail.
+        This is *not* super-resolution and does not recover lost sensor data.
+        """
+        if weight <= 0:
+            return frame.copy()
+        if not low_resolution:
+            return cv2.addWeighted(frame, 1.0 - weight, denoised, weight, 0)
+        if frame.shape != denoised.shape:
+            raise ValueError("Resultado neural com resolução diferente da captura.")
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Blur only the *edge detector* so sensor grain is not mistaken for texture.
+        guide = cv2.GaussianBlur(gray, (5, 5), 0)
+        dx = cv2.Sobel(guide, cv2.CV_32F, 1, 0, ksize=3)
+        dy = cv2.Sobel(guide, cv2.CV_32F, 0, 1, ksize=3)
+        edge = np.clip((cv2.magnitude(dx, dy) - 18.0) / 70.0, 0.0, 1.0)
+        # At strong edges no more than 15% of requested neural mix is used.
+        alpha = (weight * (1.0 - 0.85 * edge))[:, :, None]
+        mixed = (frame.astype(np.float32) * (1.0 - alpha)
+                 + denoised.astype(np.float32) * alpha)
+        return np.clip(mixed, 0, 255).astype(np.uint8)
+
     def process(self, frame, settings):
-        if self.task == "denoise":
-            # Neural denoiser first, then classic illumination. Avoid applying
-            # a second heavy spatial denoiser over the neural result.
-            restored = self.engine.enhance(frame)
-            correction = self.classical.process(restored, replace(settings, denoise=False))
-            base = frame.copy()
-        else:
-            # For low-light models, use classic color/noise preprocessing, but
-            # avoid applying another strong gamma lift on top of neural light.
-            correction = self.classical.process(frame, replace(settings, mode="off"))
-            restored = self.engine.enhance(correction)
-            base = correction
-            correction = restored
         weight = max(0.0, min(float(settings.strength), 1.0))
-        return cv2.addWeighted(base, 1.0 - weight, correction, weight, 0)
+        if self.task == "denoise":
+            restored = self.engine.enhance(frame)
+            spec = self.engine.spec
+            smaller = bool(
+                spec.input_width and spec.input_height
+                and (spec.input_width < frame.shape[1]
+                     or spec.input_height < frame.shape[0])
+            )
+            preserved = self._blend_denoised(frame, restored, weight, smaller)
+            # Work at camera resolution for exposure/sharpness, not 320x180.
+            # Never stack the classical spatial+temporal denoiser on this model.
+            return self.classical.process(preserved, replace(settings, denoise=False))
+
+        # Low-light models must not receive a second strong gamma lift.
+        base = self.classical.process(frame, replace(settings, mode="off"))
+        restored = self.engine.enhance(base)
+        return cv2.addWeighted(base, 1.0 - weight, restored, weight, 0)
 
     def reset(self):
         self.classical.reset()
