@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import replace
-from time import monotonic
 
 import cv2
 
@@ -28,7 +27,7 @@ class NeuralEnhancementProcessor:
             # a second heavy spatial denoiser over the neural result.
             restored = self.engine.enhance(frame)
             correction = self.classical.process(restored, replace(settings, denoise=False))
-            base = self.classical._manual(frame.copy(), settings)
+            base = frame.copy()
         else:
             # For low-light models, use classic color/noise preprocessing, but
             # avoid applying another strong gamma lift on top of neural light.
@@ -41,6 +40,9 @@ class NeuralEnhancementProcessor:
 
     def reset(self):
         self.classical.reset()
+
+    def fallback(self):
+        return BasicEnhancer()
 
 
 class AsyncModelManager:
@@ -102,6 +104,15 @@ class AsyncModelManager:
                         "state": "error", "name": None, "provider": None,
                         "task": None, "error": str(exc)[:700],
                     }
+
+    def report_runtime_error(self, message: str) -> None:
+        """Invalidate the selected model after a processing failure."""
+        with self._lock:
+            self._generation += 1
+            self._state = {
+                "state": "error", "name": None, "provider": None,
+                "task": None, "error": str(message)[:700],
+            }
 
     def unload(self) -> dict:
         with self._lock:
