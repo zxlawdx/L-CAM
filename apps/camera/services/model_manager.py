@@ -122,6 +122,7 @@ class AsyncModelManager:
                     "state": "ready",
                     "name": spec.name,
                     "provider": engine.provider,
+                    "device_id": engine.dml_device_id if engine.provider == "DmlExecutionProvider" else None,
                     "task": spec.task,
                     "error": None,
                     "license": spec.license,
