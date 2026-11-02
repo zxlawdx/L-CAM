@@ -58,6 +58,7 @@
       $("runtime").textContent = "● Vela conectado";
       setControls();
       refreshAudioDevices();
+      refreshPresets();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -261,6 +262,63 @@
       notify("Falha ao consultar finalização: " + error.message, true);
     }
   }
+
+  async function refreshPresets() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_presets_list");
+      const select = $("preset-select");
+      const previous = select.value;
+      select.innerHTML = "";
+      select.append(new Option("Selecionar perfil...", ""));
+      for (const name of result.presets || []) {
+        select.append(new Option(name, name));
+      }
+      if ([...select.options].some(option => option.value === previous)) select.value = previous;
+    } catch (error) {
+      $("preset-status").textContent = error.message;
+    }
+  }
+  function presetMessage(message) {
+    $("preset-status").textContent = message;
+  }
+  async function savePreset() {
+    const name = $("preset-name").value.trim();
+    if (!name) { presetMessage("Informe um nome para o perfil."); return; }
+    try {
+      await call("camera_presets_save", name);
+      await refreshPresets();
+      $("preset-select").value = name;
+      presetMessage("Perfil salvo: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  async function applyPreset() {
+    const name = $("preset-select").value;
+    if (!name) { presetMessage("Escolha um perfil."); return; }
+    try {
+      const result = await call("camera_presets_apply", name);
+      const values = result.settings;
+      for (const field of ["brightness", "contrast", "saturation"]) $(field).value = values[field];
+      $("mode").value = values.mode;
+      $("strength").value = Math.round(values.strength * 100);
+      $("sharpness").value = Math.round(values.sharpness * 100);
+      $("denoise").checked = !!values.denoise;
+      labels();
+      presetMessage("Perfil aplicado: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  async function deletePreset() {
+    const name = $("preset-select").value;
+    if (!name) { presetMessage("Escolha um perfil."); return; }
+    try {
+      await call("camera_presets_delete", name);
+      await refreshPresets();
+      presetMessage("Perfil excluído: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  $("preset-save").addEventListener("click", savePreset);
+  $("preset-apply").addEventListener("click", applyPreset);
+  $("preset-delete").addEventListener("click", deletePreset);
   function showModelState(result) {
     const node = $("model-status");
     const state = result?.state || "off";
