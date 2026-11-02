@@ -67,6 +67,11 @@ class LatestFrameMailbox:
                 return frame
             return None
 
+    @property
+    def closed(self) -> bool:
+        with self._condition:
+            return self._closed
+
     def latest(self):
         with self._condition:
             return self._frame
