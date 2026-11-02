@@ -1,5 +1,8 @@
-"""Image comparison must not affect the frames written to the recorder."""
+"""Original image comparison never changes the frames sent to recorder."""
+from __future__ import annotations
+
 import base64
+import time
 
 import cv2
 import numpy as np
@@ -12,13 +15,13 @@ class FakeCamera:
     index = 0
 
     def start(self):
-        return None
+        self.running = True
 
     def read(self):
         return np.full((40, 48, 3), 30, dtype=np.uint8)
 
     def stop(self):
-        return None
+        self.running = False
 
 
 class FakeProcessor:
@@ -41,38 +44,53 @@ class FakeRecorder:
         self.recording = False
 
 
-def _decode(data_url):
+def decode(data_url):
     payload = base64.b64decode(data_url.partition(",")[2])
     return cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
-def test_original_comparison_is_only_preview_and_never_recording():
+def wait_frame(studio):
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        result = studio.frame()
+        if "image" in result:
+            return result
+    raise AssertionError("Preview não foi publicado.")
+
+
+def test_comparison_uses_raw_preview_and_enhanced_recorder():
     recorder = FakeRecorder()
     studio = CameraStudio(camera=FakeCamera(), processor=FakeProcessor(), recorder=recorder)
     studio.start()
-    studio.record_start()
+    initial = wait_frame(studio)
     raw = studio.frame(original_preview=True)
     enhanced = studio.frame(original_preview=False)
-    assert np.mean(_decode(raw["image"])) < 40
-    assert np.mean(_decode(enhanced["image"])) > 170
-    assert recorder.recording
-    assert len(recorder.written) == 2
-    assert all(np.all(frame == 180) for frame in recorder.written)
+    assert np.mean(decode(raw["image"])) < 40
+    assert np.mean(decode(enhanced["image"])) > 170
     assert raw["width"] == 48 and raw["height"] == 40
-    assert "preview_fps" in raw
+    assert "capture_fps" in initial
     assert "processing_ms" in raw
+
+    studio.record_start()
+    deadline = time.monotonic() + 2
+    while len(recorder.written) < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert len(recorder.written) >= 2
+    assert all(np.all(frame == 180) for frame in recorder.written)
     studio.stop()
 
 
-def test_invalid_original_preview_is_rejected():
+def test_invalid_preview_is_rejected():
     studio = CameraStudio(camera=FakeCamera(), processor=FakeProcessor(), recorder=FakeRecorder())
     studio.start()
     with pytest.raises(ValueError):
         studio.frame(original_preview="yes")
+    with pytest.raises(ValueError):
+        studio.frame(last_sequence="1")
     studio.stop()
 
 
-def test_configuration_is_reflected_in_status():
+def test_status_reflects_settings():
     studio = CameraStudio(camera=FakeCamera(), processor=FakeProcessor(), recorder=FakeRecorder())
     result = studio.configure(mode="low_light", strength=0.75, sharpness=0.1, denoise=True)
     assert result["settings"]["mode"] == "low_light"
