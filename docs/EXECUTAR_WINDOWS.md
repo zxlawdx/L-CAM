@@ -17,7 +17,7 @@ python manage.py collectstatic --no-tailwind --no-install
 python manage.py runapp
 ```
 
-Também pode ser usado um ambiente virtual existente; Python 3.12 é o alvo de testes automatizados. A compatibilidade de Python 3.14 deve ser validada separadamente.
+Também pode ser usado um ambiente virtual existente. A CI passou com Python 3.12 (Windows/Linux) e Python 3.14 (Windows) nas verificações de instalação, testes, rotas e assets. A abertura real do WebView e a webcam ainda precisam ser testadas em hardware.
 
 ## Verificações
 
