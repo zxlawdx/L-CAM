@@ -12,6 +12,8 @@ from math import isfinite
 import cv2
 import numpy as np
 
+from .temporal import MotionAwareTemporalDenoiser
+
 MODES = frozenset({"off", "auto", "balanced", "low_light"})
 
 
@@ -60,6 +62,13 @@ class BasicEnhancer:
 
     def __init__(self) -> None:
         self._clahe = cv2.createCLAHE(clipLimit=1.4, tileGridSize=(8, 8))
+        self._temporal = MotionAwareTemporalDenoiser()
+        self._smoothed_mean = None
+
+    def reset(self) -> None:
+        """Clear temporal history after camera, mode or scene transitions."""
+        self._temporal.reset()
+        self._smoothed_mean = None
 
     @staticmethod
     def _validate_frame(frame: np.ndarray) -> None:
@@ -83,7 +92,14 @@ class BasicEnhancer:
     def _enhance_luma(self, ycrcb: np.ndarray, mode: str, strength: float) -> np.ndarray:
         """Corrige principalmente sombras; mantém realces mais protegidos."""
         y, cr, cb = cv2.split(ycrcb)
-        mean = cv2.mean(y)[0]
+        current_mean = cv2.mean(y)[0]
+        # Smooth automatic exposure estimates so noise/movement does not
+        # produce frame-to-frame brightness pumping.
+        if self._smoothed_mean is None or abs(current_mean - self._smoothed_mean) > 35:
+            self._smoothed_mean = current_mean
+        else:
+            self._smoothed_mean = 0.88 * self._smoothed_mean + 0.12 * current_mean
+        mean = self._smoothed_mean
         if mode == "auto":
             darkness = float(np.clip((135.0 - mean) / 105.0, 0.0, 1.0))
             if darkness < 0.05:
@@ -127,7 +143,10 @@ class BasicEnhancer:
 
         ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
         if settings.denoise:
-            ycrcb = self._denoise(ycrcb, amount=0.5 + 0.5 * settings.strength)
+            ycrcb = self._temporal.process(ycrcb, strength=settings.strength)
+            ycrcb = self._denoise(ycrcb, amount=0.4 + 0.4 * settings.strength)
+        else:
+            self._temporal.reset()
         if settings.mode != "off":
             ycrcb = self._enhance_luma(ycrcb, settings.mode, settings.strength)
 
