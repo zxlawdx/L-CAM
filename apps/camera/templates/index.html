@@ -35,6 +35,27 @@
         <label class="lcam-check"><input type="checkbox" id="lcam-denoise" checked> Reduzir ruído de cor e textura</label>
         <button type="button" class="lcam-reset" id="lcam-reset">Restaurar ajustes</button>
       </section>
+      <section class="lcam-panel">
+        <span class="lcam-panel-label">05 / IA OPCIONAL</span>
+        <details class="lcam-ai-details">
+          <summary>Modelos ONNX locais <span class="lcam-experimental">EXPERIMENTAL</span></summary>
+          <p>O L-CAM não distribui pesos neurais. Carregue um manifesto JSON de um modelo licenciado e verificado; não há download automático.</p>
+          <label for="lcam-model-manifest">Caminho do manifesto .json</label>
+          <input id="lcam-model-manifest" type="text" placeholder="C:\\Modelos\\meu-modelo.json" spellcheck="false">
+          <label for="lcam-model-provider">Execução preferida</label>
+          <select id="lcam-model-provider">
+            <option value="auto">Automático (testar CUDA / DirectML / CPU)</option>
+            <option value="cuda">CUDA</option>
+            <option value="directml">DirectML</option>
+            <option value="cpu">CPU</option>
+          </select>
+          <div class="lcam-model-buttons">
+            <button type="button" id="lcam-model-load">Carregar modelo</button>
+            <button type="button" id="lcam-model-unload">Desativar IA</button>
+          </div>
+          <p id="lcam-model-status" class="lcam-model-status" role="status" aria-live="polite">IA desligada — processamento clássico ativo.</p>
+        </details>
+      </section>
       <section class="lcam-panel"><span class="lcam-panel-label">04 / SAÍDA</span><h2>Gravação</h2><p>MP4 local em <code>Vídeos/L-CAM</code>.</p><p class="lcam-notice">Melhoria clássica de imagem (CPU). IA neural, áudio e câmera virtual ainda não estão implementados. Use uma luz frontal para melhores resultados.</p></section>
     </aside>
   </div>
