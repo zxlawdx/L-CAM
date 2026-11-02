@@ -109,8 +109,13 @@
   async function preview() {
     if (disposed || !active) return;
     try {
-      const result = await call("camera_frame", originalPreview);
+      const result = await call("camera_frame", originalPreview, lastSequence);
       if (disposed || !active) return;
+      if (result.waiting || result.unchanged) {
+        previewTimer = setTimeout(preview, 30);
+        return;
+      }
+      if (Number.isInteger(result.sequence)) lastSequence = result.sequence;
       $("frame").src = result.image;
       $("frame").hidden = false;
       $("empty").hidden = true;
@@ -197,6 +202,7 @@
   }
   function compare() {
     originalPreview = !originalPreview;
+    lastSequence = -1;
     $("compare").setAttribute("aria-pressed", String(originalPreview));
     $("compare").textContent = originalPreview ? "Ver aprimorada" : "Ver original";
   }
