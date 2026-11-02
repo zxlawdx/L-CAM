@@ -23,4 +23,5 @@ def run():
     app = VelaApp(settings_module="config.settings", bridge_class=LCamBridge)
     for app_name in INSTALLED_APPS:
         app.register_app(app_name)
+    app.lifecycle.on_shutdown(app.bridge.studio.close)
     app.run()
