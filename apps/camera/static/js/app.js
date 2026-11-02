@@ -338,7 +338,8 @@
         : state === "error" ? "IA indisponível" : "IA desligada";
     }
     if (state === "ready") {
-      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + " · " + result.task + ".";
+      const adapter = result.device_id != null ? " · adaptador " + result.device_id : "";
+      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + adapter + " · " + result.task + ".";
     } else if (state === "loading") {
       node.textContent = "Verificando hash, licença informada e preparando sessão ONNX...";
     } else if (state === "error") {
