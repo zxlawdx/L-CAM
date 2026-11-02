@@ -72,3 +72,15 @@
  .lcam-metrics { gap:8px; }
  .lcam-metrics span + span { padding-left:8px; }
 }
+
+/* Advanced ONNX controls stay collapsed to avoid cluttering the main view. */
+.lcam-ai-details summary { display:flex;align-items:center;gap:8px;cursor:pointer;color:#cfe0f9;font-weight:650;font-size:13px;outline-offset:3px; }
+.lcam-ai-details[open] summary { margin-bottom:15px; }
+.lcam-experimental { font-size:9px;color:#e3c087;border:1px solid #94764c;border-radius:4px;padding:3px 6px;font-weight:700; }
+.lcam-ai-details input[type="text"] { width:100%;padding:10px;min-height:38px;margin-bottom:18px;background:#0e1623;color:#dbeafa;border:1px solid #445672;border-radius:8px;font-size:12px; }
+.lcam-model-buttons { display:flex;flex-wrap:wrap;gap:7px; }
+.lcam-model-buttons button { flex:1;white-space:nowrap;padding:9px 10px;font-size:11px; }
+.lcam-ai-details .lcam-model-status { margin-top:12px;word-break:break-word;line-height:1.5;min-height:26px; }
+.lcam-model-status[data-state="ready"] { color:#80dbb6; }
+.lcam-model-status[data-state="error"] { color:#ffb7c0; }
+.lcam-model-status[data-state="loading"] { color:#9ec7ff; }
