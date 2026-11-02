@@ -1,5 +1,9 @@
-# Vela desktop runtime
-vela-framework @ git+https://github.com/zxlawdx/Vela-framework.git
+# Dependência oficial utilizada por vela startproject:
+git+https://github.com/zxlawdx/Vela-framework.git
+
+# Pipeline de vídeo local:
 opencv-python>=4.8,<5
 numpy>=1.26,<3
+
+# Testes:
 pytest>=8,<10
