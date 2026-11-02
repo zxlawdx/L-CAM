@@ -58,6 +58,10 @@ class CameraStudio:
             if self._pipeline is not None:
                 self._pipeline.set_processor(processor)
 
+    def _handle_processor_error(self, message: str) -> None:
+        self._models.report_runtime_error(message)
+        self._install_processor(BasicEnhancer())
+
     def model_load(self, manifest_path: str, provider: str = "auto") -> dict:
         return self._models.load(manifest_path, provider)
 
@@ -93,7 +97,7 @@ class CameraStudio:
                 processor=self._processor,
                 recording_worker=self._recording,
                 settings=self._settings,
-                on_processor_error=self._models.report_runtime_error,
+                on_processor_error=self._handle_processor_error,
             )
             pipeline.start()
             self._pipeline = pipeline
