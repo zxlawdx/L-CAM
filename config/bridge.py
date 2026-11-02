@@ -93,3 +93,13 @@ class LCamBridge(StarterBridge):
 
     def camera_record_stop(self) -> dict:
         return self._result(self.studio.record_stop)
+
+    def camera_model_load(self, manifest_path: str, provider: str = "auto") -> dict:
+        """Start loading a verified local ONNX model; never download weights."""
+        return self._result(self.studio.model_load, manifest_path, provider)
+
+    def camera_model_status(self) -> dict:
+        return self._result(self.studio.model_status)
+
+    def camera_model_unload(self) -> dict:
+        return self._result(self.studio.model_unload)
