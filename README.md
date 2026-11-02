@@ -36,6 +36,10 @@ A CI verifica **Python 3.12 em Windows/Linux e Python 3.14 em Windows** (instala
 
 - Rota de estúdio com layout escuro e controles responsivos.
 - Prévia nativa por OpenCV exibida pela bridge Vela ↔ JavaScript.
+- Processamento adaptativo de pouca luz, redução de ruído de cor, CLAHE limitado, gamma e nitidez opcional.
+- Modos Original, Automático, Natural e Baixa luminosidade; botão de restauração e comparação original/aprimorada.
+- Métricas de resolução real, FPS da prévia e tempo do processamento.
+- Negociação de captura 1280×720/30fps, com fallback conforme o driver.
 - Brilho, contraste, saturação e suavização de ruído.
 - Seleção de índice de dispositivo (0, 1, 2).
 - Gravação MP4 local (vídeo **sem áudio**) em `~/Videos/L-CAM`.
@@ -46,4 +50,6 @@ A CI verifica **Python 3.12 em Windows/Linux e Python 3.14 em Windows** (instala
 
 O projeto ainda é uma **versão inicial**, não a entrega completa: IA de melhoria de vídeo, sincronização de áudio, câmera virtual, otimizações de desempenho, instalação automática e testes com webcam física permanecem pendentes. A prévia transporta JPEG via bridge; esta etapa privilegia um caminho funcional e testável, não desempenho de produção.
 
-Veja [execução no Windows](docs/EXECUTAR_WINDOWS.md), [plano](docs/PLANO_DE_TRABALHO.md) e [diretrizes de engenharia](docs/DIRETRIZES_DE_ENGENHARIA.md).
+Veja [execução no Windows](docs/EXECUTAR_WINDOWS.md), [roadmap de qualidade e IA](docs/ROADMAP_QUALIDADE_VIDEO.md), [plano inicial](docs/PLANO_DE_TRABALHO.md) e [diretrizes de engenharia](docs/DIRETRIZES_DE_ENGENHARIA.md).
+
+**Benchmark CPU local:** `python -m scripts.benchmark_image --width 1280 --height 720 --frames 30`. Mede apenas o processamento, não a taxa real da câmera ou da WebView.
