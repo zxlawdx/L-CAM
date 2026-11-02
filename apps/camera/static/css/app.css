@@ -27,7 +27,7 @@
 .lcam-status { white-space: nowrap; border: 1px solid #35455c; background: #1c2a3c; color: #b6c4d5; font-size: 11px; padding: 8px 12px; border-radius: 30px; }
 .lcam-status.active { color: #81e0bb; border-color: #2b6956; background:#18332d; }
 .lcam-status.recording { color: #ffc1c9; border-color: #9b4758; background:#482633; }
-.lcam-viewport { position: relative; width: 100%; aspect-ratio: 16/9; min-height: 260px; border: 1px solid #25334a; background: radial-gradient(ellipse at 50% 45%,#152337 0,#090e17 68%); border-radius: 13px; display: grid; place-items: center; overflow: hidden; }
+.lcam-viewport { position: relative; width: 100%; height: min(60vh, 690px); min-height: 300px; border: 1px solid #25334a; background: radial-gradient(ellipse at 50% 45%,#152337 0,#090e17 68%); border-radius: 13px; display: grid; place-items: center; overflow: hidden; }
 .lcam-viewport::after { content: ""; position:absolute; inset: 0; pointer-events:none; background-image: linear-gradient(transparent 96%,#36547622 100%),linear-gradient(90deg,transparent 96%,#36547622 100%); background-size: 48px 48px; opacity: .23; }
 #lcam-frame { width: 100%; height: 100%; object-fit: contain; position: absolute; inset: 0; z-index:1; }
 .lcam-empty { padding: 15px; display:flex; flex-direction:column; gap:9px; align-items:center; text-align:center; z-index: 1; }
@@ -35,6 +35,9 @@
 .lcam-empty strong { font-size: 18px; }
 .lcam-empty span:last-child { color: var(--muted); font-size: 12px; }
 .lcam-live { position: absolute; z-index: 2; top: 16px; left: 16px; color: white; font-weight: 800; letter-spacing: .08em; font-size: 10px; background: #c5324d; border-radius: 5px; padding: 7px 10px; }
+.lcam-metrics { display:flex;flex-wrap:wrap;gap:17px;align-items:center;min-height:28px;padding:9px 4px 0;color:#94a8c2;font:500 11px ui-monospace,Consolas,monospace; }
+.lcam-metrics span + span { border-left:1px solid #35455a;padding-left:17px; }
+.lcam-app button[aria-pressed="true"] { border-color:#4a85cb;background:#24456e; }
 .lcam-controls { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top: 18px; }
 .lcam-control-group { display: flex; flex-wrap:wrap; gap:9px; }
 .lcam-app button.lcam-primary { background:#2766c4; border-color:#3478dd; font-weight:700; }
@@ -58,3 +61,14 @@
 @media(max-width: 900px) {.lcam-workspace { grid-template-columns:1fr; }.lcam-sidebar { display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }.lcam-stage { padding:14px; }}
 @media(max-width: 530px) {.lcam-topbar{padding:0 15px}.lcam-version{display:none}.lcam-workspace{padding:10px}.lcam-controls{flex-direction:column}.lcam-control-group{display:grid;grid-template-columns:1fr 1fr}.lcam-viewport{min-height:200px}}
 @media(prefers-reduced-motion:reduce){.lcam-app *{transition:none!important}}
+
+.lcam-panel .lcam-spaced-label { margin-top:22px; }
+.lcam-mode-help { color:#8aa4c3!important; min-height:32px; }
+.lcam-app .lcam-reset { width:100%;margin-top:15px;background:transparent;border:1px solid #42526a;color:#b5c9e0;font-size:12px;padding:9px; }
+.lcam-panel select { margin-bottom: 14px; }
+.lcam-panel input[type="range"] { cursor:pointer; }
+@media(max-width: 600px) {
+ .lcam-viewport { height:45vh; min-height:240px; }
+ .lcam-metrics { gap:8px; }
+ .lcam-metrics span + span { padding-left:8px; }
+}
