@@ -220,7 +220,10 @@ class OnnxRuntimeEngine:
             selected = values[preference]
             if selected not in available:
                 raise RuntimeError(f"Provedor {selected} indisponível neste ambiente.")
-            return [selected] + (["CPUExecutionProvider"] if selected != "CPUExecutionProvider" and "CPUExecutionProvider" in available else [])
+            # Explicit GPU requests must NOT silently initialize a CPU-only
+            # session if DirectML fails. CPU remains available to operators
+            # unsupported by the GPU within a successful GPU session.
+            return [selected]
         ordered = ["CUDAExecutionProvider"]
         if sys.platform == "win32":
             ordered.append("DmlExecutionProvider")
