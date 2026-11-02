@@ -188,8 +188,13 @@ class OnnxRuntimeEngine:
                     provider_options=provider_options,
                 )
                 self._check_model_signature(session)
+                reported = session.get_providers()
+                if preference != "auto" and (not reported or reported[0] != provider):
+                    raise RuntimeError(
+                        f"Provedor solicitado {provider} não foi ativado; sessão usou {reported}."
+                    )
                 self._session = session
-                self.provider = session.get_providers()[0]
+                self.provider = reported[0]
                 logger.info("Modelo %s preparado: %s", spec.name, self.provider)
                 break
             except Exception as exc:
