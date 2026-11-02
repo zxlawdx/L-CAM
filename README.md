@@ -55,3 +55,19 @@ python -m scripts.benchmark_onnx "C:\\caminho\\modelo.json" --provider auto --fr
 ```
 
 Resultados sintéticos de CI **não demonstram FPS real na GTX 1650**.
+
+## Novo experimento — SCUNet Real-PSNR (720p, ONNX)
+
+Agora há uma integração experimental com **SCUNet Real-PSNR**, em vez de depender apenas do DnCNN 320×180. Os pesos ONNX pré-convertidos são baixados no computador do usuário, autenticados por SHA-256 (grafo e tensores externos) e processados em blocos com sobreposição **sem reduzir todo o frame de 1280×720**.
+
+Windows, ambiente `.venv` na pasta do L-CAM:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_scunet_windows.ps1
+python manage.py collectstatic --no-tailwind --no-install
+python manage.py runapp
+```
+
+Na interface Vela: **Modelos ONNX locais → Ativar SCUNet Real-PSNR**. A instalação e o smoke test são executados fora da UI. Não é necessário converter PTH com PyTorch.
+
+A GPU GTX 1650 4 GB não foi testada: o modelo é pesado e pode comprometer o FPS. Veja [documentação e ajustes de memória](docs/SCUNET_REAL_PSNR.md). A saída do modelo e o desempenho são experimentais, **não certificados para gravação profissional**.
