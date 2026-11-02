@@ -60,6 +60,7 @@
       refreshAudioDevices();
       refreshPresets();
       refreshModelState();
+      refreshScunet();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -340,6 +341,47 @@
       node.textContent = "IA desligada — processamento clássico ativo.";
     }
   }
+
+  async function refreshScunet() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_model_catalog");
+      const model = (result.models || [])[0];
+      const installed = !!model?.installed;
+      $("scunet-activate").disabled = !installed;
+      $("scunet-status").textContent = installed
+        ? "SCUNet Real-PSNR instalado: pronto para testar DirectML/CPU."
+        : "SCUNet não instalado. Execute o script setup_scunet_windows.ps1.";
+      if (installed && $("model-manifest") && !$("model-manifest").value) {
+        $("model-manifest").value = model.manifest;
+      }
+    } catch (error) {
+      $("scunet-status").textContent = "Erro ao verificar modelo: " + error.message;
+    }
+  }
+  async function activateScunet() {
+    $("scunet-activate").disabled = true;
+    // DnCNN's 320x180 upscaling caused blur. SCUNet instead preserves the
+    // camera's full resolution and intentionally disables stacked denoisers.
+    $("mode").value = "off";
+    $("strength").value = "40";
+    $("sharpness").value = "10";
+    $("denoise").checked = false;
+    labels();
+    try {
+      await syncSettings();
+      const selected = $("model-provider").value;
+      showModelState(await call("camera_scunet_load", selected));
+      notify("SCUNet: preparando ONNX. Aguarde o indicador IA ativa.");
+    } catch (error) {
+      showModelState({state: "error", error: error.message});
+      notify(error.message, true);
+    } finally {
+      await refreshScunet();
+    }
+  }
+  $("scunet-activate").addEventListener("click", activateScunet);
+
   async function refreshModelState() {
     if (!ready || disposed) return;
     try {
