@@ -85,8 +85,8 @@ class CameraStudio:
         with self._lock:
             if not self._active:
                 raise RuntimeError("Ative a câmera antes de solicitar quadros.")
-            started = perf_counter()
             original = self._camera.read()
+            started = perf_counter()
             processed = self._processor.process(original, self._settings)
             processing_ms = (perf_counter() - started) * 1000.0
 
