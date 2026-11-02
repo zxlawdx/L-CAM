@@ -14,6 +14,7 @@
   let adjustmentTimer = null;
   let lastMetricsAt = 0;
   let lastSequence = -1;
+  let modelPoll = null;
   const modes = {
     auto: "Identifica pouca luz e corrige sombras de forma adaptativa.",
     low_light: "Reforça iluminação de sombras, preservando realces quando possível.",
@@ -216,6 +217,55 @@
       adjustmentTimer = setTimeout(syncSettings, 140);
     });
   }
+
+  function showModelState(result) {
+    const node = $("model-status");
+    const state = result?.state || "off";
+    node.dataset.state = state;
+    if (state === "ready") {
+      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + " · " + result.task + ".";
+    } else if (state === "loading") {
+      node.textContent = "Verificando hash, licença informada e preparando sessão ONNX...";
+    } else if (state === "error") {
+      node.textContent = "IA indisponível — filtro clássico ativo. " + (result.error || "Falha desconhecida.");
+    } else {
+      node.textContent = "IA desligada — processamento clássico ativo.";
+    }
+  }
+  async function refreshModelState() {
+    if (!ready || disposed) return;
+    try {
+      showModelState(await call("camera_model_status"));
+    } catch (error) {
+      $("model-status").dataset.state = "error";
+      $("model-status").textContent = "Falha consultando IA: " + error.message;
+    }
+  }
+  async function loadModel() {
+    const manifest = $("model-manifest").value.trim();
+    if (!manifest) {
+      showModelState({ state: "error", error: "Informe o caminho de um manifesto JSON." });
+      return;
+    }
+    $("model-load").disabled = true;
+    try {
+      showModelState(await call("camera_model_load", manifest, $("model-provider").value));
+    } catch (error) {
+      showModelState({ state: "error", error: error.message });
+    } finally {
+      $("model-load").disabled = false;
+    }
+  }
+  async function unloadModel() {
+    try {
+      showModelState(await call("camera_model_unload"));
+    } catch (error) {
+      showModelState({ state: "error", error: error.message });
+    }
+  }
+  $("model-load").addEventListener("click", loadModel);
+  $("model-unload").addEventListener("click", unloadModel);
+  modelPoll = setInterval(refreshModelState, 2000);
   labels();
   setControls();
   window.addEventListener("pywebviewready", connect);
@@ -225,6 +275,7 @@
       active = false;
       clearTimeout(previewTimer);
       clearTimeout(adjustmentTimer);
+      clearInterval(modelPoll);
       const api = window.pywebview?.api;
       if (typeof api?.camera_stop === "function") api.camera_stop().catch(() => {});
     }
