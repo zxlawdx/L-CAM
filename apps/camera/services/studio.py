@@ -64,6 +64,30 @@ class CameraStudio:
         self._models.report_runtime_error(message)
         self._install_processor(BasicEnhancer())
 
+    @staticmethod
+    def _scunet_manifest() -> Path:
+        return Path(__file__).resolve().parents[3] / "models" / "scunet_real_psnr" / "scunet_real_psnr.json"
+
+    def model_catalog(self) -> dict:
+        manifest = self._scunet_manifest()
+        return {
+            "models": [{
+                "name": "SCUNet Real-PSNR",
+                "description": "Redução de ruído real por blocos nativos — experimental",
+                "installed": manifest.is_file(),
+                "manifest": str(manifest) if manifest.is_file() else None,
+            }]
+        }
+
+    def model_load_default(self, provider: str = "auto") -> dict:
+        manifest = self._scunet_manifest()
+        if not manifest.is_file():
+            raise RuntimeError(
+                "SCUNet ainda não instalado. Execute "
+                "python -m scripts.install_scunet no ambiente do L-CAM."
+            )
+        return self._models.load(str(manifest), provider)
+
     def model_load(self, manifest_path: str, provider: str = "auto") -> dict:
         return self._models.load(manifest_path, provider)
 
