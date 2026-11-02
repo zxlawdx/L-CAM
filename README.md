@@ -16,7 +16,7 @@ python manage.py collectstatic --no-tailwind --no-install
 python manage.py runapp
 ```
 
-Use preferencialmente **Python 3.12**, versão verificada na CI. Python 3.14 ainda precisa ser validado.
+A CI verifica **Python 3.12 em Windows/Linux e Python 3.14 em Windows** (instalação, CLI, rotas, assets e testes). A interface gráfica e uma webcam física ainda precisam ser testadas localmente.
 
 ## Estrutura
 
