@@ -19,7 +19,7 @@ class RealtimePipeline:
     separate bounded writer queue and is never triggered by camera_frame().
     """
 
-    def __init__(self, camera, processor, recording_worker, settings, target_fps=30.0):
+    def __init__(self, camera, processor, recording_worker, settings, target_fps=30.0, on_processor_error=None):
         if target_fps <= 0:
             raise ValueError("target_fps deve ser positivo.")
         self._camera = camera
@@ -28,6 +28,7 @@ class RealtimePipeline:
         self._settings = settings
         self._settings_lock = threading.Lock()
         self._target_fps = float(target_fps)
+        self._on_processor_error = on_processor_error
         self._input = LatestFrameMailbox()
         self._output = LatestFrameMailbox()
         self._stop = threading.Event()
@@ -144,6 +145,16 @@ class RealtimePipeline:
                 except Exception as exc:
                     failures += 1
                     logger.exception("Falha no processamento do quadro.")
+                    fallback = getattr(processor, "fallback", None)
+                    if callable(fallback):
+                        # Safe CPU/classic fallback on any failed ONNX inference.
+                        self.set_processor(fallback())
+                        if callable(self._on_processor_error):
+                            self._on_processor_error(str(exc))
+                        with self._stats_lock:
+                            self._error = "IA desativada após erro; processamento clássico ativo: " + str(exc)
+                        failures = 0
+                        continue
                     if failures >= 3:
                         with self._stats_lock:
                             self._error = "Falha contínua de processamento: " + str(exc)
