@@ -59,3 +59,17 @@ Só depois de medir a velocidade e comparar a preservação de cabelo, pele, rou
 - tests/unit/test_scunet.py: validação de imagem, arquivos e segurança sem downloads de CI
 
 Limitações: transporte JPEG/Base64 pela bridge, latência real desconhecida, SCUNet processa quadros individualmente (não vídeo temporal), qualidade final depende da iluminação e sensor. Não são inventados detalhes faciais.
+
+## Comparação de qualidade sem travar a gravação
+
+Se o SCUNet não atingir FPS suficiente no Acer Nitro, use-o para **aprimorar uma fotografia isolada** e comparar a fidelidade. Feche o aplicativo para liberar a webcam e execute:
+
+    python -m scripts.compare_scunet --camera 0 --provider directml --strength 0.4
+
+Ou, para testar um MP4 já gravado, sem precisar ligar a webcam:
+
+    python -m scripts.compare_scunet --input "C:\\Users\\barro\\Videos\\L-CAM\\seu-video.mp4" --provider directml --strength 0.4
+
+Os PNGs ficam em Pictures/L-CAM/Comparisons: imagem original, SCUNet e montagem lado a lado. O original é salvo sem alterações. A inferência pode levar muitos segundos; isso não é um teste de FPS em streaming.
+
+O primeiro teste de inferência **real** com os pesos ONNX (GitHub Actions Linux, CPU) passou em 02/11/2026. Para 256×256 em CPU de CI: aquecimento 1,84 s e quadro posterior 1,76 s. Esses números não representam a GTX 1650 e justificam a comparação por foto antes de prometer tempo real.
