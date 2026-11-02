@@ -3,7 +3,7 @@
 <section class="lcam-app" id="lcam-app">
   <header class="lcam-topbar">
     <div class="lcam-brand"><span class="lcam-symbol">◉</span><strong>L-CAM</strong><span class="lcam-edition">STUDIO</span></div>
-    <div class="lcam-top-actions"><span class="lcam-runtime" id="lcam-runtime">Conectando ao Vela…</span><span class="lcam-version">Preview 0.1</span></div>
+    <div class="lcam-top-actions"><span class="lcam-runtime" id="lcam-ai-indicator">IA desligada</span><span class="lcam-runtime" id="lcam-runtime">Conectando ao Vela…</span><span class="lcam-version">Preview 0.1</span></div>
   </header>
   <div class="lcam-workspace">
     <main class="lcam-stage">
@@ -24,7 +24,7 @@
       <section class="lcam-panel"><span class="lcam-panel-label">01 / DISPOSITIVO</span><h2>Entrada de vídeo</h2><label for="lcam-device">Câmera</label><select id="lcam-device"><option value="0">Câmera padrão (0)</option><option value="1">Câmera alternativa (1)</option><option value="2">Câmera alternativa (2)</option></select></section>
       <section class="lcam-panel"><span class="lcam-panel-label">02 / APRIMORAMENTO</span><h2>Melhoria de imagem</h2>
         <label for="lcam-mode">Modo de processamento</label><select id="lcam-mode"><option value="auto" selected>Automático (recomendado)</option><option value="low_light">Baixa luminosidade</option><option value="balanced">Natural / equilibrado</option><option value="off">Original / sem aprimoramento</option></select>
-        <label class="lcam-spaced-label" for="lcam-strength">Intensidade <output id="lcam-strength-val">70%</output></label><input type="range" id="lcam-strength" min="0" max="100" value="70" step="5">
+        <label class="lcam-spaced-label" for="lcam-strength">Intensidade <output id="lcam-strength-val">40%</output></label><input type="range" id="lcam-strength" min="0" max="100" value="40" step="5">
         <label for="lcam-sharpness">Nitidez <output id="lcam-sharpness-val">10%</output></label><input type="range" id="lcam-sharpness" min="0" max="100" value="10" step="5">
         <p class="lcam-mode-help" id="lcam-mode-help">Ajusta sombras automaticamente sem exagerar no contraste.</p>
       </section>
