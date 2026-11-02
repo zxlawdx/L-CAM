@@ -56,6 +56,22 @@
           <p id="lcam-model-status" class="lcam-model-status" role="status" aria-live="polite">IA desligada — processamento clássico ativo.</p>
         </details>
       </section>
+      <section class="lcam-panel">
+        <span class="lcam-panel-label">06 / PERFIS</span>
+        <details class="lcam-ai-details">
+          <summary>Perfis de imagem salvos</summary>
+          <label for="lcam-preset-select">Escolher perfil</label>
+          <select id="lcam-preset-select"><option value="">Nenhum perfil salvo</option></select>
+          <label for="lcam-preset-name">Nome do novo perfil</label>
+          <input id="lcam-preset-name" type="text" maxlength="40" placeholder="Ex.: Gravação à noite">
+          <div class="lcam-model-buttons">
+            <button type="button" id="lcam-preset-save">Salvar</button>
+            <button type="button" id="lcam-preset-apply">Aplicar</button>
+            <button type="button" id="lcam-preset-delete">Excluir</button>
+          </div>
+          <p id="lcam-preset-status" class="lcam-model-status" role="status" aria-live="polite">Os perfis ficam salvos localmente no computador.</p>
+        </details>
+      </section>
       <section class="lcam-panel"><span class="lcam-panel-label">04 / SAÍDA</span><h2>Gravação</h2>
         <label for="lcam-microphone">Microfone</label>
         <select id="lcam-microphone"><option value="-1">Sem áudio (somente vídeo)</option></select>
