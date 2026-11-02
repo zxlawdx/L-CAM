@@ -70,6 +70,12 @@ class RealtimePipeline:
             if old.mode != settings.mode or old.denoise != settings.denoise:
                 self._needs_reset = True
 
+    def set_processor(self, processor) -> None:
+        """Swap frame processing strategy without touching capture or Vela."""
+        with self._settings_lock:
+            self._processor = processor
+            self._needs_reset = True
+
     def _capture_loop(self) -> None:
         failures = 0
         sequence = 0
@@ -126,13 +132,14 @@ class RealtimePipeline:
                 with self._settings_lock:
                     settings = self._settings
                     reset = self._needs_reset
+                    processor = self._processor
                     self._needs_reset = False
-                if reset and callable(getattr(self._processor, "reset", None)):
-                    self._processor.reset()
+                if reset and callable(getattr(processor, "reset", None)):
+                    processor.reset()
 
                 started = monotonic()
                 try:
-                    enhanced = self._processor.process(sample.image, settings)
+                    enhanced = processor.process(sample.image, settings)
                     failures = 0
                 except Exception as exc:
                     failures += 1
@@ -140,6 +147,7 @@ class RealtimePipeline:
                     if failures >= 3:
                         with self._stats_lock:
                             self._error = "Falha contínua de processamento: " + str(exc)
+                        self._stop.set()
                         break
                     continue
 
