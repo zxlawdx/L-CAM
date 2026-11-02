@@ -2,7 +2,7 @@ name: L-CAM — Vela startup and tests
 
 on:
   push:
-    branches: [main, "feat/lcam-initial"]
+    branches: [main, "feat/lcam-initial", "feat/realtime-video-pipeline"]
   pull_request:
 
 jobs:
