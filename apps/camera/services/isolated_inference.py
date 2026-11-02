@@ -60,6 +60,7 @@ class IsolatedOnnxRuntimeEngine:
         self._messages = queue.Queue(maxsize=2)
         self._stderr_tail = deque(maxlen=30)
         self._lock = threading.RLock()
+        self._close_lock = threading.Lock()
         self._frame_timeout = frame_timeout
         if command is None:
             if not isinstance(getattr(spec, "manifest_path", None), Path):
@@ -166,8 +167,10 @@ class IsolatedOnnxRuntimeEngine:
                 raise error from exc
 
     def close(self):
-        # Never wait indefinitely for a crashed native DLL/driver.
-        with self._lock:
+        # Do NOT acquire the frame-operation lock here: a native GPU call may
+        # be stuck. Closing from the Vela UI must terminate the child promptly
+        # without waiting for the inference timeout or for video frame locks.
+        with self._close_lock:
             if self._closed:
                 return
             self._closed = True
