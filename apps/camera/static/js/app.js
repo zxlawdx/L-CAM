@@ -59,6 +59,7 @@
       setControls();
       refreshAudioDevices();
       refreshPresets();
+      refreshModelState();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -200,7 +201,7 @@
   }
   function reset() {
     $("mode").value = "auto";
-    $("strength").value = "70";
+    $("strength").value = "40";
     $("sharpness").value = "10";
     $("brightness").value = "0";
     $("contrast").value = "1";
@@ -323,6 +324,12 @@
     const node = $("model-status");
     const state = result?.state || "off";
     node.dataset.state = state;
+    const badge = $("ai-indicator");
+    if (badge) {
+      badge.textContent = state === "ready" ? "IA ativa: " + result.name
+        : state === "loading" ? "IA carregando..."
+        : state === "error" ? "IA indisponível" : "IA desligada";
+    }
     if (state === "ready") {
       node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + " · " + result.task + ".";
     } else if (state === "loading") {
