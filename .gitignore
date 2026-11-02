@@ -22,3 +22,7 @@ logs/
 *.webm
 .DS_Store
 Thumbs.db
+
+# Local AI model artifacts and downloaded FFmpeg binaries
+models/
+tools/
