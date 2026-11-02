@@ -1,0 +1,14 @@
+<link rel="stylesheet" href="{{ static('camera/css/app.css') }}">
+<main class="studio">
+  <header><div class="brand"><span class="brand-mark">◉</span> L-CAM <small>STUDIO</small></div><span class="pill">● Vela Desktop</span></header>
+  <div class="workspace">
+    <section class="preview">
+      <div class="preview-title"><h1>Camera Studio</h1><span id="status">Câmera desligada</span></div>
+      <div class="video-shell"><video id="video" autoplay playsinline muted></video><div id="placeholder">Selecione uma câmera para começar</div></div>
+      <div class="toolbar"><button id="start">Ativar câmera</button><button id="stop" disabled>Desativar</button><button id="record" disabled>● Gravar</button><button id="finish" disabled>■ Parar gravação</button></div>
+      <p id="message" role="status" aria-live="polite">Pronto para iniciar.</p>
+    </section>
+    <aside><h2>Dispositivos</h2><label for="device">Câmera</label><select id="device"><option value="">Padrão do sistema</option></select><h2>Imagem</h2><p>Os filtros de processamento nativo serão conectados ao pipeline Python.</p><h2>Gravação</h2><p>Prévia e gravação de teste no navegador integrado, quando suportado.</p></aside>
+  </div>
+</main>
+<script src="{{ static('camera/js/app.js') }}"></script>
