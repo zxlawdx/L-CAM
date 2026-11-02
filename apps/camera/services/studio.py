@@ -1,4 +1,4 @@
-"""Orquestração de captura, melhoria e gravação; nenhuma dependência do Vela."""
+"""CameraStudio use cases: Vela-independent camera, preview and recording."""
 from __future__ import annotations
 
 import base64
@@ -7,21 +7,23 @@ from collections import deque
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from time import perf_counter
+from time import monotonic
 
+from .capture import CameraCapture
 from .contracts import CameraSource, FrameProcessor, PreviewEncoder, RecordingSink
 from .encoding import JpegPreviewEncoder
-from .capture import CameraCapture
 from .filters import BasicEnhancer, ImageSettings
+from .realtime import RealtimePipeline
 from .recorder import VideoRecorder
+from .recording_worker import RecordingWorker
 
 
 class CameraStudio:
-    """Caso de uso principal; hardware, processador e gravação são injetáveis.
+    """Coordinates separate capture, processing and recording workers.
 
-    Enquanto a prévia usa chamadas sucessivas da bridge, a gravação continua
-    dependente da taxa de quadros solicitados pelo frontend. Um worker separado
-    para gravação com sincronização de áudio é uma etapa futura.
+    Capture and processing never depend on how frequently JavaScript renders.
+    Instantiating a different FrameProcessor or PreviewEncoder requires no
+    changes in the Vela bridge or the application UI.
     """
 
     def __init__(
@@ -35,124 +37,151 @@ class CameraStudio:
         self._processor = processor if processor is not None else BasicEnhancer()
         self._recorder = recorder if recorder is not None else VideoRecorder()
         self._encoder = encoder if encoder is not None else JpegPreviewEncoder(86)
+        self._recording = RecordingWorker(self._recorder)
+        self._pipeline = None
         self._settings = ImageSettings()
         self._lock = threading.RLock()
-        self._active = False
         self._recording_path = None
-        self._timestamps = deque(maxlen=30)
+        self._preview_times = deque(maxlen=45)
+
+    @staticmethod
+    def _fps(times) -> float:
+        if len(times) < 2:
+            return 0.0
+        duration = times[-1] - times[0]
+        return round((len(times) - 1) / duration, 1) if duration > 0 else 0.0
 
     def start(self, index: int = 0) -> dict:
         if type(index) is not int or not 0 <= index <= 10:
             raise ValueError("Índice de câmera inválido.")
         with self._lock:
-            if self._active:
+            if self._pipeline is not None:
                 self.stop()
             self._camera.index = index
-            self._camera.start()
-            self._timestamps.clear()
-            self._active = True
-            return {"active": True, "device": index}
+            pipeline = RealtimePipeline(
+                camera=self._camera,
+                processor=self._processor,
+                recording_worker=self._recording,
+                settings=self._settings,
+            )
+            pipeline.start()
+            self._pipeline = pipeline
+            self._preview_times.clear()
+            return {"active": True, "device": index, "workers": ["capture", "process"]}
 
     def configure(
-        self,
-        *,
-        brightness=0,
-        contrast=1.0,
-        saturation=1.0,
-        denoise=False,
-        mode="off",
-        strength=0.65,
-        sharpness=0.0,
+        self, *, brightness=0, contrast=1.0, saturation=1.0,
+        denoise=False, mode="off", strength=0.65, sharpness=0.0
     ) -> dict:
-        # Não converter strings/bools silenciosamente: bridge recebe dados
-        # externos, que devem obedecer aos tipos do contrato.
+        # Explicit immutable validation before updating the active pipeline.
         settings = ImageSettings(
-            brightness=brightness,
-            contrast=contrast,
-            saturation=saturation,
-            denoise=denoise,
-            mode=mode,
-            strength=strength,
-            sharpness=sharpness,
+            brightness=brightness, contrast=contrast,
+            saturation=saturation, denoise=denoise,
+            mode=mode, strength=strength, sharpness=sharpness,
         )
         with self._lock:
             self._settings = settings
+            if self._pipeline is not None:
+                self._pipeline.configure(settings)
             return {"settings": asdict(settings)}
 
-    def frame(self, original_preview: bool = False) -> dict:
+    def frame(self, original_preview: bool = False, last_sequence: int = -1) -> dict:
         if type(original_preview) is not bool:
             raise ValueError("original_preview deve ser booleano.")
+        if type(last_sequence) is not int or last_sequence < -1:
+            raise ValueError("last_sequence deve ser inteiro positivo ou -1.")
         with self._lock:
-            if not self._active:
-                raise RuntimeError("Ative a câmera antes de solicitar quadros.")
-            original = self._camera.read()
-            started = perf_counter()
-            processed = self._processor.process(original, self._settings)
-            processing_ms = (perf_counter() - started) * 1000.0
+            pipeline = self._pipeline
+        if pipeline is None:
+            raise RuntimeError("Ative a câmera antes de solicitar quadros.")
 
-            # A comparação é somente visual: gravações continuam aprimoradas.
-            if self._recorder.recording:
-                self._recorder.write(processed)
-            preview = original if original_preview else processed
-            encoded = self._encoder.encode(preview)
+        # Wait for new processed pixels without driving capture/processing.
+        packet = pipeline.next_preview(last_sequence, timeout=0.25)
+        if packet is None:
+            latest = pipeline.latest()
+            if latest is None:
+                state = pipeline.status()
+                if state["error"]:
+                    raise RuntimeError(state["error"])
+                return {"waiting": True, "sequence": last_sequence}
+            if latest.sequence <= last_sequence:
+                return {"unchanged": True, "sequence": last_sequence}
+            packet = latest
 
-            now = perf_counter()
-            self._timestamps.append(now)
-            if len(self._timestamps) >= 2:
-                elapsed = self._timestamps[-1] - self._timestamps[0]
-                fps = (len(self._timestamps) - 1) / elapsed if elapsed > 0 else 0.0
-            else:
-                fps = 0.0
-            return {
-                "image": "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii"),
-                "width": int(preview.shape[1]),
-                "height": int(preview.shape[0]),
-                "recording": self._recorder.recording,
-                "preview_fps": round(fps, 1),
-                "processing_ms": round(processing_ms, 1),
-                "mode": self._settings.mode,
-            }
-
-    def record_start(self, fps: float = 20.0) -> dict:
-        if type(fps) not in (int, float) or not 1 <= fps <= 60:
-            raise ValueError("FPS fora do intervalo suportado.")
+        selected = packet.original if original_preview else packet.image
+        jpeg = self._encoder.encode(selected)
+        now = monotonic()
         with self._lock:
-            if not self._active:
+            self._preview_times.append(now)
+            preview_fps = self._fps(self._preview_times)
+        telemetry = pipeline.status()
+        return {
+            "image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii"),
+            "sequence": packet.sequence,
+            "width": int(selected.shape[1]),
+            "height": int(selected.shape[0]),
+            "recording": self._recording.recording,
+            "preview_fps": preview_fps,
+            "capture_fps": telemetry["capture_fps"],
+            "process_fps": telemetry["process_fps"],
+            "processing_ms": round(packet.processing_ms, 1),
+            "latency_ms": round((now - packet.captured_at) * 1000, 1),
+            "dropped_frames": telemetry["dropped_preprocessing"],
+            "mode": self._settings.mode,
+        }
+
+    def record_start(self, fps: float = 30.0) -> dict:
+        with self._lock:
+            pipeline = self._pipeline
+            if pipeline is None:
                 raise RuntimeError("Ative a câmera antes de gravar.")
-            if self._recorder.recording:
+            if self._recording.recording:
                 raise RuntimeError("Uma gravação já está ativa.")
-            frame = self._camera.read()
-            height, width = frame.shape[:2]
-            folder = Path.home() / "Videos" / "L-CAM"
-            filename = "lcam-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".mp4"
-            path = folder / filename
-            self._recorder.start(str(path), float(fps), width, height)
+        packet = pipeline.latest() or pipeline.next_preview(-1, timeout=1.0)
+        if packet is None:
+            raise RuntimeError("Aguarde o primeiro quadro antes de gravar.")
+        height, width = packet.image.shape[:2]
+        folder = Path.home() / "Videos" / "L-CAM"
+        filename = "lcam-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".mp4"
+        path = folder / filename
+        self._recording.start(str(path), float(fps), width, height)
+        with self._lock:
             self._recording_path = str(path)
-            return {"recording": True, "path": self._recording_path, "audio": False}
+        return {"recording": True, "path": str(path), "audio": False, "writer": "async"}
 
     def record_stop(self) -> dict:
+        result = self._recording.stop()
         with self._lock:
-            previous = self._recording_path
-            self._recorder.stop()
+            path = self._recording_path
             self._recording_path = None
-            return {"recording": False, "path": previous}
+        return {"recording": False, "path": path, **result}
 
     def stop(self) -> dict:
         with self._lock:
-            self._recorder.stop()
-            self._camera.stop()
-            self._active = False
+            pipeline = self._pipeline
+            self._pipeline = None
+        if pipeline is not None:
+            pipeline.stop()
+        if self._recording.recording:
+            self._recording.stop()
+        with self._lock:
             self._recording_path = None
-            self._timestamps.clear()
-            return {"active": False}
+            self._preview_times.clear()
+        return {"active": False}
 
     def status(self) -> dict:
         with self._lock:
-            return {
-                "active": self._active,
-                "recording": self._recorder.recording,
-                "settings": asdict(self._settings),
-            }
+            pipeline = self._pipeline
+            settings = asdict(self._settings)
+            path = self._recording_path
+        return {
+            "active": pipeline is not None,
+            "recording": self._recording.recording,
+            "settings": settings,
+            "recording_path": path,
+            "pipeline": pipeline.status() if pipeline is not None else None,
+            "writer": self._recording.stats(),
+        }
 
     def close(self) -> None:
         self.stop()
