@@ -266,7 +266,7 @@ class CameraStudio:
             self._pipeline = None
         if pipeline is not None:
             pipeline.stop()
-        if self._recording.recording:
+        if self._recording.recording or self._audio is not None:
             self.record_stop()
         with self._lock:
             self._recording_path = None
