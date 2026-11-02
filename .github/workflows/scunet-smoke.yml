@@ -1,0 +1,28 @@
+name: SCUNet — real ONNX model smoke
+
+on:
+  push:
+    branches: ["feat/scunet-real-denoise"]
+    paths:
+      - "apps/camera/services/inference.py"
+      - "scripts/install_scunet.py"
+      - "scripts/benchmark_scunet.py"
+      - ".github/workflows/scunet-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-real-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install image pipeline and ONNX Runtime CPU
+        run: |
+          python -m pip install numpy opencv-python-headless "onnxruntime>=1.22,<2"
+      - name: Download the exact published ONNX graph and external tensor data
+        run: python -m scripts.install_scunet --tile-size 256
+      - name: Execute real SCUNet ONNX inference in CPU (not a GPU benchmark)
+        run: python -m scripts.benchmark_scunet --provider cpu --width 256 --height 256 --frames 1
