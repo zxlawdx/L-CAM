@@ -123,3 +123,11 @@ class LCamBridge(StarterBridge):
 
     def camera_presets_delete(self, name: str) -> dict:
         return self._result(self.studio.presets_delete, name)
+
+    def camera_model_catalog(self) -> dict:
+        """Report SCUNet installation availability to the Vela UI."""
+        return self._result(self.studio.model_catalog)
+
+    def camera_scunet_load(self, provider: str = "auto") -> dict:
+        """Activate the locally verified SCUNet model without manual paths."""
+        return self._result(self.studio.model_load_default, provider)
