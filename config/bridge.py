@@ -71,8 +71,8 @@ class LCamBridge(StarterBridge):
     def camera_start(self, index: int = 0) -> dict:
         return self._result(self.studio.start, index)
 
-    def camera_frame(self, original_preview: bool = False) -> dict:
-        return self._result(self.studio.frame, original_preview)
+    def camera_frame(self, original_preview: bool = False, last_sequence: int = -1) -> dict:
+        return self._result(self.studio.frame, original_preview, last_sequence)
 
     def camera_stop(self) -> dict:
         return self._result(self.studio.stop)
