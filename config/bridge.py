@@ -71,8 +71,8 @@ class LCamBridge(StarterBridge):
     def camera_start(self, index: int = 0) -> dict:
         return self._result(self.studio.start, index)
 
-    def camera_frame(self) -> dict:
-        return self._result(self.studio.frame)
+    def camera_frame(self, original_preview: bool = False) -> dict:
+        return self._result(self.studio.frame, original_preview)
 
     def camera_stop(self) -> dict:
         return self._result(self.studio.stop)
@@ -83,7 +83,7 @@ class LCamBridge(StarterBridge):
     def camera_configure(self, settings: dict) -> dict:
         if not isinstance(settings, dict):
             return {"ok": False, "error": "Configurações inválidas."}
-        fields = {"brightness", "contrast", "saturation", "denoise"}
+        fields = {"brightness", "contrast", "saturation", "denoise", "mode", "strength", "sharpness"}
         if set(settings) - fields:
             return {"ok": False, "error": "Configuração desconhecida."}
         return self._result(self.studio.configure, **settings)
