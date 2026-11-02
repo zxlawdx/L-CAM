@@ -14,6 +14,7 @@ from .contracts import CameraSource, FrameProcessor, PreviewEncoder, RecordingSi
 from .encoding import JpegPreviewEncoder
 from .filters import BasicEnhancer, ImageSettings
 from .realtime import RealtimePipeline
+from .model_manager import AsyncModelManager
 from .recorder import VideoRecorder
 from .recording_worker import RecordingWorker
 
@@ -43,6 +44,22 @@ class CameraStudio:
         self._lock = threading.RLock()
         self._recording_path = None
         self._preview_times = deque(maxlen=45)
+        self._models = AsyncModelManager(on_ready=self._install_processor)
+
+    def _install_processor(self, processor) -> None:
+        with self._lock:
+            self._processor = processor
+            if self._pipeline is not None:
+                self._pipeline.set_processor(processor)
+
+    def model_load(self, manifest_path: str, provider: str = "auto") -> dict:
+        return self._models.load(manifest_path, provider)
+
+    def model_unload(self) -> dict:
+        return self._models.unload()
+
+    def model_status(self) -> dict:
+        return self._models.status()
 
     @staticmethod
     def _fps(times) -> float:
@@ -63,6 +80,7 @@ class CameraStudio:
                 processor=self._processor,
                 recording_worker=self._recording,
                 settings=self._settings,
+                on_processor_error=self._models.report_runtime_error,
             )
             pipeline.start()
             self._pipeline = pipeline
@@ -98,6 +116,9 @@ class CameraStudio:
         # Wait for new processed pixels without driving capture/processing.
         packet = pipeline.next_preview(last_sequence, timeout=0.25)
         if packet is None:
+            state = pipeline.status()
+            if state["error"] and not state["worker_alive"].get("lcam-process", False):
+                raise RuntimeError(state["error"])
             latest = pipeline.latest()
             if latest is None:
                 state = pipeline.status()
@@ -181,7 +202,9 @@ class CameraStudio:
             "recording_path": path,
             "pipeline": pipeline.status() if pipeline is not None else None,
             "writer": self._recording.stats(),
+            "model": self._models.status(),
         }
 
     def close(self) -> None:
+        self._models.close()
         self.stop()
