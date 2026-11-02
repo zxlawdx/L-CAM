@@ -112,6 +112,8 @@ class AsyncModelManager:
         return self.status()
 
     def _load(self, path, preference, generation) -> None:
+        engine = None
+        published = False
         try:
             spec = OnnxModelSpec.load(path)
             engine = self._engine_factory(spec, preference)
@@ -125,6 +127,7 @@ class AsyncModelManager:
                 previous = self._active_engine
                 self._on_ready(processor)
                 self._active_engine = engine
+                published = True
                 if previous is not None:
                     self._close_later(previous)
                 self._state = {
@@ -139,6 +142,8 @@ class AsyncModelManager:
                 }
         except Exception as exc:
             logger.exception("Não foi possível carregar o modelo ONNX.")
+            if engine is not None and not published:
+                self._close_later(engine)
             with self._lock:
                 if not self._closed and generation == self._generation:
                     self._state = {
