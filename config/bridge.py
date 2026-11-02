@@ -88,8 +88,16 @@ class LCamBridge(StarterBridge):
             return {"ok": False, "error": "Configuração desconhecida."}
         return self._result(self.studio.configure, **settings)
 
-    def camera_record_start(self) -> dict:
-        return self._result(self.studio.record_start)
+    def camera_record_start(self, audio_device: int = -1) -> dict:
+        if type(audio_device) is not int or audio_device < -1:
+            return {"ok": False, "error": "Dispositivo de áudio inválido."}
+        return self._result(self.studio.record_start, 30.0, None if audio_device == -1 else audio_device)
+
+    def camera_audio_devices(self) -> dict:
+        return self._result(lambda: {"devices": self.studio.audio_devices()})
+
+    def camera_record_status(self) -> dict:
+        return self._result(self.studio.recording_status)
 
     def camera_record_stop(self) -> dict:
         return self._result(self.studio.record_stop)
