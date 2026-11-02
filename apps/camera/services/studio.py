@@ -17,6 +17,8 @@ from .realtime import RealtimePipeline
 from .model_manager import AsyncModelManager
 from .recorder import VideoRecorder
 from .recording_worker import RecordingWorker
+from .audio import AudioCapture
+from .ffmpeg_mux import AsyncFinalizer, FfmpegMuxer
 
 
 class CameraStudio:
@@ -45,6 +47,10 @@ class CameraStudio:
         self._recording_path = None
         self._preview_times = deque(maxlen=45)
         self._models = AsyncModelManager(on_ready=self._install_processor)
+        self._audio = None
+        self._audio_path = None
+        self._video_path = None
+        self._finalizer = AsyncFinalizer()
 
     def _install_processor(self, processor) -> None:
         with self._lock:
@@ -60,6 +66,13 @@ class CameraStudio:
 
     def model_status(self) -> dict:
         return self._models.status()
+
+    @staticmethod
+    def audio_devices() -> list[dict]:
+        return AudioCapture.list_devices()
+
+    def recording_status(self) -> dict:
+        return {"writer": self._recording.stats(), "finalizer": self._finalizer.status()}
 
     @staticmethod
     def _fps(times) -> float:
@@ -151,31 +164,78 @@ class CameraStudio:
             "mode": self._settings.mode,
         }
 
-    def record_start(self, fps: float = 30.0) -> dict:
+    def record_start(self, fps: float = 30.0, audio_device: int | None = None) -> dict:
         with self._lock:
             pipeline = self._pipeline
             if pipeline is None:
                 raise RuntimeError("Ative a câmera antes de gravar.")
             if self._recording.recording:
                 raise RuntimeError("Uma gravação já está ativa.")
+            if self._finalizer.status()["state"] == "finalizing":
+                raise RuntimeError("Aguarde a finalização da gravação anterior.")
         packet = pipeline.latest() or pipeline.next_preview(-1, timeout=1.0)
         if packet is None:
             raise RuntimeError("Aguarde o primeiro quadro antes de gravar.")
+        if audio_device is not None and (type(audio_device) is not int or audio_device < 0):
+            raise ValueError("Dispositivo de microfone inválido.")
         height, width = packet.image.shape[:2]
         folder = Path.home() / "Videos" / "L-CAM"
-        filename = "lcam-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".mp4"
-        path = folder / filename
-        self._recording.start(str(path), float(fps), width, height)
+        filename = "lcam-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        final_path = folder / (filename + ".mp4")
+        use_audio = audio_device is not None
+        video_path = folder / (filename + ".video.mp4") if use_audio else final_path
+        audio_path = folder / (filename + ".audio.wav") if use_audio else None
+        mic = None
+        if use_audio:
+            if FfmpegMuxer().ffmpeg is None:
+                raise RuntimeError("FFmpeg não encontrado. Instale FFmpeg para gravar áudio e vídeo.")
+            mic = AudioCapture(device=audio_device)
+            mic.start(str(audio_path))
+        try:
+            self._recording.start(str(video_path), float(fps), width, height)
+        except Exception:
+            if mic is not None:
+                mic.stop()
+            raise
         with self._lock:
-            self._recording_path = str(path)
-        return {"recording": True, "path": str(path), "audio": False, "writer": "async"}
+            self._audio = mic
+            self._audio_path = str(audio_path) if audio_path is not None else None
+            self._video_path = str(video_path)
+            self._recording_path = str(final_path)
+        return {
+            "recording": True, "path": str(final_path),
+            "audio": use_audio, "audio_device": audio_device, "writer": "async",
+        }
 
     def record_stop(self) -> dict:
         result = self._recording.stop()
         with self._lock:
+            mic = self._audio
+            audio_path = self._audio_path
+            video_path = self._video_path
             path = self._recording_path
+            self._audio = None
+            self._audio_path = None
+            self._video_path = None
             self._recording_path = None
-        return {"recording": False, "path": path, **result}
+        if mic is None:
+            return {"recording": False, "path": path, "finalizing": False, **result}
+        audio_stats = mic.stop()
+        if not audio_stats["audio_started_at"] or not result["first_video_frame_at"]:
+            raise RuntimeError(
+                "Microfone ou vídeo sem quadros. Arquivos temporários preservados: "
+                + str(video_path) + " ; " + str(audio_path)
+            )
+        self._finalizer.start(
+            video_path, audio_path, path,
+            video_started_at=result["first_video_frame_at"],
+            audio_started_at=audio_stats["audio_started_at"],
+        )
+        return {
+            "recording": False, "path": path, "finalizing": True,
+            "audio": True, "audio_dropped_blocks": audio_stats["dropped_audio_blocks"],
+            **result,
+        }
 
     def stop(self) -> dict:
         with self._lock:
@@ -184,7 +244,7 @@ class CameraStudio:
         if pipeline is not None:
             pipeline.stop()
         if self._recording.recording:
-            self._recording.stop()
+            self.record_stop()
         with self._lock:
             self._recording_path = None
             self._preview_times.clear()
@@ -203,6 +263,7 @@ class CameraStudio:
             "pipeline": pipeline.status() if pipeline is not None else None,
             "writer": self._recording.stats(),
             "model": self._models.status(),
+            "finalizer": self._finalizer.status(),
         }
 
     def close(self) -> None:
