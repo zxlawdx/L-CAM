@@ -9,6 +9,7 @@
   let ready = false;
   let active = false;
   let recording = false;
+  let finalizing = false;
   let originalPreview = false;
   let previewTimer = null;
   let adjustmentTimer = null;
@@ -33,10 +34,11 @@
   function setControls() {
     $("start").disabled = !ready || active;
     $("stop").disabled = !active || recording;
-    $("record").disabled = !active || recording;
+    $("record").disabled = !active || recording || finalizing;
     $("finish").disabled = !recording;
     $("compare").disabled = !active;
     $("device").disabled = active;
+    $("microphone").disabled = recording || finalizing;
   }
   async function call(method, ...args) {
     const api = window.pywebview?.api;
@@ -55,6 +57,7 @@
       ready = true;
       $("runtime").textContent = "● Vela conectado";
       setControls();
+      refreshAudioDevices();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -164,10 +167,11 @@
   async function startRecording() {
     $("record").disabled = true;
     try {
-      const result = await call("camera_record_start");
+      const device = Number($("microphone").value);
+      const result = await call("camera_record_start", device);
       recording = true;
       status("● Gravando", "recording");
-      notify("Gravando MP4 sem áudio: " + result.path);
+      notify("Gravando " + (result.audio ? "vídeo com microfone" : "vídeo sem áudio") + ": " + result.path);
       setControls();
     } catch (error) {
       notify(error.message, true);
@@ -179,8 +183,9 @@
     try {
       const result = await call("camera_record_stop");
       recording = false;
-      status("● Câmera ativa", "active");
-      notify("Vídeo salvo: " + result.path + " (sem áudio)");
+      finalizing = !!result.finalizing;
+      status(finalizing ? "● Finalizando áudio" : "● Câmera ativa", finalizing ? "recording" : "active");
+      notify(finalizing ? "Finalizando MP4 com FFmpeg. Aguarde: " + result.path : "Vídeo salvo: " + result.path + " (sem áudio)");
       setControls();
     } catch (error) {
       notify(error.message, true);
@@ -218,6 +223,44 @@
     });
   }
 
+
+  async function refreshAudioDevices() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_audio_devices");
+      const select = $("microphone");
+      select.innerHTML = "";
+      select.append(new Option("Sem áudio (somente vídeo)", "-1"));
+      for (const device of result.devices || []) {
+        select.append(new Option(device.name + " (" + device.channels + " canais)", String(device.id)));
+      }
+      $("audio-help").textContent = result.devices?.length
+        ? "Para gravar com microfone, selecione o dispositivo. Exige FFmpeg instalado."
+        : "Microfone indisponível. Instale sounddevice para habilitar áudio.";
+    } catch (error) {
+      $("audio-help").textContent = "Não foi possível detectar microfones: " + error.message;
+    }
+  }
+  async function refreshRecordingStatus() {
+    if (!finalizing || disposed || !ready) return;
+    try {
+      const result = await call("camera_record_status");
+      const state = result.finalizer?.state;
+      if (state === "done") {
+        finalizing = false;
+        status("● Câmera ativa", "active");
+        notify("MP4 com áudio finalizado: " + result.finalizer.output);
+        setControls();
+      } else if (state === "error") {
+        finalizing = false;
+        status("● Erro de finalização");
+        notify("FFmpeg falhou; vídeo e WAV temporários preservados. " + result.finalizer.error, true);
+        setControls();
+      }
+    } catch (error) {
+      notify("Falha ao consultar finalização: " + error.message, true);
+    }
+  }
   function showModelState(result) {
     const node = $("model-status");
     const state = result?.state || "off";
@@ -265,7 +308,7 @@
   }
   $("model-load").addEventListener("click", loadModel);
   $("model-unload").addEventListener("click", unloadModel);
-  modelPoll = setInterval(refreshModelState, 2000);
+  modelPoll = setInterval(() => { refreshModelState(); refreshRecordingStatus(); }, 2000);
   labels();
   setControls();
   window.addEventListener("pywebviewready", connect);
