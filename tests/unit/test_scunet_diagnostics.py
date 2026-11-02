@@ -46,6 +46,7 @@ class FakeORT:
 
 
 class FakeModelSpec:
+    name = "test-directml"
     layout = "NCHW"
     input_width = None
     input_height = None
