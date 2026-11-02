@@ -39,17 +39,20 @@ if ($LASTEXITCODE -ne 0) { throw 'Falha instalando SCUNet. Confira rede, hash e 
 
 $Manifest = Join-Path $Root 'models\scunet_real_psnr\scunet_real_psnr.json'
 if (-not $SkipBenchmark) {
-    Write-Host '[4/4] Teste de inferencia GPU com 1 quadro sintetico...' -ForegroundColor Cyan
-    & $Python -m scripts.benchmark_scunet --manifest $Manifest --provider directml --width 384 --height 384 --frames 1
+    Write-Host '[4/4] Diagnosticando ONNX CPU / DirectML adaptadores 0 e 1 (subprocessos isolados)...' -ForegroundColor Cyan
+    # The old benchmark swallowed the root cause when a native DirectML DLL
+    # terminated Python without a traceback. This wrapper captures exit code,
+    # stderr and each adapter's GPU execution in its own child process.
+    & $Python -u -m scripts.diagnose_scunet --manifest $Manifest --tile-size 256 --timeout 120
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning 'O benchmark GPU falhou. O modelo permanece instalado; tente --provider cpu ou use -SkipBenchmark.'
+        Write-Warning 'A GPU ainda nao passou no teste; leia logs/scunet-diagnostic-*.json. O modelo/arquivos permanecem instalados.'
     }
 } else {
-    Write-Host '[4/4] Benchmark omitido (-SkipBenchmark).' -ForegroundColor Yellow
+    Write-Host '[4/4] Diagnostico omitido (-SkipBenchmark).' -ForegroundColor Yellow
 }
 
 Write-Host ''
-Write-Host 'SCUNet preparado. No L-CAM, abra Modelos ONNX locais > Ativar SCUNet Real-PSNR.' -ForegroundColor Green
+Write-Host 'Arquivos SCUNet instalados. So ative IA apos o diagnostico DirectML passar.' -ForegroundColor Green
 Write-Host "Manifest instalado: $Manifest"
-Write-Host 'Se houver erro de memoria na GPU, execute novamente com -TileSize 256.'
+Write-Host 'Para investigar sem instalar novamente: python -u -m scripts.diagnose_scunet'
 Write-Host 'Iniciar L-CAM: python manage.py collectstatic --no-tailwind --no-install; python manage.py runapp'
