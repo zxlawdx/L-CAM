@@ -13,6 +13,7 @@
   let previewTimer = null;
   let adjustmentTimer = null;
   let lastMetricsAt = 0;
+  let lastSequence = -1;
   const modes = {
     auto: "Identifica pouca luz e corrige sombras de forma adaptativa.",
     low_light: "Reforça iluminação de sombras, preservando realces quando possível.",
@@ -95,8 +96,8 @@
     if (now - lastMetricsAt < 450) return;
     lastMetricsAt = now;
     $("resolution").textContent = result.width + " × " + result.height;
-    $("fps").textContent = result.preview_fps + " FPS";
-    $("processing").textContent = result.processing_ms + " ms/processamento";
+    $("fps").textContent = "Captura " + result.capture_fps + " · Process. " + result.process_fps + " · Prévia " + result.preview_fps + " FPS";
+    $("processing").textContent = result.processing_ms + " ms/filtro · " + result.latency_ms + " ms/latência";
   }
   async function preview() {
     if (disposed || !active) return;
@@ -130,6 +131,7 @@
       await call("camera_configure", settings());
       if (disposed) return;
       active = true;
+      lastSequence = -1;
       status("● Câmera ativa", "active");
       notify("Prévia iniciada. Use Ver original para comparar sem alterar a gravação.");
       setControls();
@@ -143,6 +145,7 @@
   async function stop() {
     if (recording) return;
     active = false;
+    lastSequence = -1;
     clearTimeout(previewTimer);
     setControls();
     try { await call("camera_stop"); }
