@@ -19,6 +19,7 @@ from .recorder import VideoRecorder
 from .recording_worker import RecordingWorker
 from .audio import AudioCapture
 from .ffmpeg_mux import AsyncFinalizer, FfmpegMuxer
+from .presets import PresetStore
 
 
 class CameraStudio:
@@ -51,6 +52,7 @@ class CameraStudio:
         self._audio_path = None
         self._video_path = None
         self._finalizer = AsyncFinalizer()
+        self._presets = PresetStore()
 
     def _install_processor(self, processor) -> None:
         with self._lock:
@@ -74,6 +76,21 @@ class CameraStudio:
     @staticmethod
     def audio_devices() -> list[dict]:
         return AudioCapture.list_devices()
+
+    def presets_list(self) -> dict:
+        return {"presets": self._presets.list()}
+
+    def presets_save(self, name: str) -> dict:
+        with self._lock:
+            settings = self._settings
+        return {"presets": self._presets.save(name, settings)}
+
+    def presets_apply(self, name: str) -> dict:
+        settings = self._presets.get(name)
+        return self.configure(**asdict(settings))
+
+    def presets_delete(self, name: str) -> dict:
+        return {"presets": self._presets.delete(name)}
 
     def recording_status(self) -> dict:
         return {"writer": self._recording.stats(), "finalizer": self._finalizer.status()}
