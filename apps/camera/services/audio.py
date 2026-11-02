@@ -45,7 +45,8 @@ class AudioCapture:
                 for i, item in enumerate(sd.query_devices())
                 if int(item["max_input_channels"]) > 0
             ]
-        except ImportError:
+        except Exception as exc:
+            logger.warning("Não foi possível enumerar microfones: %s", exc)
             return []
 
     def start(self, path: str) -> dict:
