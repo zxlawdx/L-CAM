@@ -89,8 +89,10 @@ class CameraStudio:
         if type(index) is not int or not 0 <= index <= 10:
             raise ValueError("Índice de câmera inválido.")
         with self._lock:
-            if self._pipeline is not None:
-                self.stop()
+            already_active = self._pipeline is not None
+        if already_active:
+            self.stop()
+        with self._lock:
             self._camera.index = index
             pipeline = RealtimePipeline(
                 camera=self._camera,
@@ -273,3 +275,4 @@ class CameraStudio:
     def close(self) -> None:
         self._models.close()
         self.stop()
+        self._finalizer.wait(timeout=12.0)
