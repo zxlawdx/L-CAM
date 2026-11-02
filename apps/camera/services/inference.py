@@ -38,6 +38,7 @@ class OnnxModelSpec:
     tile_size: int | None = None
     tile_overlap: int = 32
     input_alignment: int = 1
+    manifest_path: Path | None = None
 
     @classmethod
     def load(cls, manifest: str | Path) -> "OnnxModelSpec":
@@ -75,6 +76,7 @@ class OnnxModelSpec:
             tile_size=data.get("tile_size"),
             tile_overlap=data.get("tile_overlap", 32),
             input_alignment=data.get("input_alignment", 1),
+            manifest_path=file,
         )
         spec.validate()
         return spec
