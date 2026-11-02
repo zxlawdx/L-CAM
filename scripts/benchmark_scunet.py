@@ -6,6 +6,7 @@ and tile stitching. It does NOT predict full L-CAM preview FPS or picture qualit
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 import statistics
 from pathlib import Path
@@ -19,18 +20,28 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "models" / "scunet_real_psnr" / "scunet_real_psnr.json"
 
 
-def benchmark(manifest: str | Path, provider: str, width: int, height: int, frames: int) -> dict:
+def benchmark(
+    manifest: str | Path, provider: str, width: int, height: int, frames: int,
+    dml_device_id: int = 0, tile_size: int | None = None,
+) -> dict:
     spec = OnnxModelSpec.load(manifest)
+    if tile_size is not None:
+        spec = replace(spec, tile_size=tile_size)
+        spec.validate()
+    print(f"[SCUNet] Starting ONNX session: provider={provider}, device_id={dml_device_id}, tile={spec.tile_size}", flush=True)
     setup = perf_counter()
-    engine = OnnxRuntimeEngine(spec, preference=provider)
+    engine = OnnxRuntimeEngine(spec, preference=provider, dml_device_id=dml_device_id)
+    print(f"[SCUNet] ONNX session created: {engine.provider}", flush=True)
     startup_ms = (perf_counter() - setup) * 1000
     sample = np.random.default_rng(24).integers(
         20, 210, size=(height, width, 3), dtype=np.uint8,
     )
-    # One warmup may be slow as a DirectML session compiles shaders.
+    # Native DirectML can exit without Python traceback. Flush stage markers.
+    print(f"[SCUNet] Running warmup inference {width}x{height}...", flush=True)
     start = perf_counter()
     first = engine.enhance(sample)
     warmup_ms = (perf_counter() - start) * 1000
+    print(f"[SCUNet] Warmup finished in {warmup_ms:.1f}ms.", flush=True)
     if first.shape != sample.shape or first.dtype != np.uint8:
         raise RuntimeError("O modelo não preservou o formato e a resolução da câmera.")
     times = []
@@ -44,6 +55,7 @@ def benchmark(manifest: str | Path, provider: str, width: int, height: int, fram
         "name": spec.name,
         "provider": engine.provider,
         "requested_provider": provider,
+        "dml_device_id": dml_device_id if provider == "directml" else None,
         "image_width": width,
         "image_height": height,
         "tile_size": spec.tile_size,
@@ -64,11 +76,16 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
     parser.add_argument("--frames", type=int, default=3)
+    parser.add_argument("--dml-device-id", type=int, default=0,
+                        help="DXGI/DirectML adapter index; on dual-GPU laptops try 0 and 1")
+    parser.add_argument("--tile-size", type=int, choices=(256, 320, 384, 448, 512),
+                        help="Override tile size only in this benchmark; do not rewrite manifest")
     args = parser.parse_args()
-    if not 64 <= args.width <= 1920 or not 64 <= args.height <= 1080 or not 1 <= args.frames <= 60:
+    if not 64 <= args.width <= 1920 or not 64 <= args.height <= 1080 or not 1 <= args.frames <= 60 or not 0 <= args.dml_device_id <= 8:
         parser.error("Dimensões ou quantidade de quadros fora dos limites.")
     print(json.dumps(
-        benchmark(args.manifest, args.provider, args.width, args.height, args.frames),
+        benchmark(args.manifest, args.provider, args.width, args.height, args.frames,
+                  dml_device_id=args.dml_device_id, tile_size=args.tile_size),
         ensure_ascii=False, indent=2,
     ))
 
