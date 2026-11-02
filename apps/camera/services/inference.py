@@ -143,8 +143,22 @@ class OnnxModelSpec:
 class OnnxRuntimeEngine:
     """One ONNX session, reused across all frames and protected by a lock."""
 
-    def __init__(self, spec: OnnxModelSpec, preference: str = "auto", runtime=None):
+    def __init__(
+        self, spec: OnnxModelSpec, preference: str = "auto", runtime=None,
+        dml_device_id: int = 0,
+    ):
         spec.validate()
+        if type(dml_device_id) is not int or not 0 <= dml_device_id <= 8:
+            raise ValueError("DirectML device_id deve ser inteiro entre 0 e 8.")
+        self.dml_device_id = dml_device_id
+        # Allow explicit adapter choice from Vela UI. Adapter enumeration is
+        # DirectML/DXGI order, not necessarily the GPU list of nvidia-smi.
+        if preference.startswith("directml:"):
+            value = preference.partition(":")[2]
+            if value not in ("0", "1", "2", "3", "4", "5", "6", "7", "8"):
+                raise ValueError("Índice de adaptador DirectML inválido.")
+            self.dml_device_id = int(value)
+            preference = "directml"
         self.spec = spec
         self._ort = runtime or importlib.import_module("onnxruntime")
         self._session_lock = threading.Lock()
@@ -161,8 +175,15 @@ class OnnxRuntimeEngine:
                 providers = [provider]
                 if provider != "CPUExecutionProvider" and "CPUExecutionProvider" in available:
                     providers.append("CPUExecutionProvider")
+                provider_options = [
+                    {"device_id": str(self.dml_device_id)} if name == "DmlExecutionProvider" else {}
+                    for name in providers
+                ]
                 session = self._ort.InferenceSession(
-                    str(spec.model_path), sess_options=options, providers=providers
+                    str(spec.model_path),
+                    sess_options=options,
+                    providers=providers,
+                    provider_options=provider_options,
                 )
                 self._check_model_signature(session)
                 self._session = session
