@@ -111,3 +111,15 @@ class LCamBridge(StarterBridge):
 
     def camera_model_unload(self) -> dict:
         return self._result(self.studio.model_unload)
+
+    def camera_presets_list(self) -> dict:
+        return self._result(self.studio.presets_list)
+
+    def camera_presets_save(self, name: str) -> dict:
+        return self._result(self.studio.presets_save, name)
+
+    def camera_presets_apply(self, name: str) -> dict:
+        return self._result(self.studio.presets_apply, name)
+
+    def camera_presets_delete(self, name: str) -> dict:
+        return self._result(self.studio.presets_delete, name)
