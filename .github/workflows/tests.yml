@@ -33,6 +33,10 @@ jobs:
         run: node --check apps/camera/static/js/app.js
       - name: Smoke-test adaptive image pipeline
         run: python -m scripts.benchmark_image --width 160 --height 120 --frames 3
+      - name: Benchmark fast image pipeline at 720p (CPU, synthetic; informational only)
+        run: python -m scripts.benchmark_live --width 1280 --height 720 --frames 8 --skip-legacy
+      - name: Compare fast and legacy CPU processing on one input
+        run: python -m scripts.benchmark_live --width 320 --height 180 --frames 4
       - name: Check official Vela command dispatcher
         run: python manage.py version
       - name: Check application routes
