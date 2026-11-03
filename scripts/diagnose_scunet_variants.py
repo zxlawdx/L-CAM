@@ -54,7 +54,8 @@ def describe_graph(manifest: Path) -> dict:
     }
 
 
-def child(manifest: Path, device: int, size: int, optimization: str) -> int:
+def child(manifest: Path, device: int, size: int, optimization: str,
+          provider: str = "directml") -> int:
     from apps.camera.services.inference import OnnxModelSpec
     import numpy as np
     import onnxruntime as ort
@@ -74,15 +75,17 @@ def child(manifest: Path, device: int, size: int, optimization: str) -> int:
     if size % input_dims:
         raise ValueError("Dimensão não alinhada ao modelo.")
     print(
-        f"[SCUNet GPU] ORT={ort.__version__} adapter={device} "
+        f"[SCUNet GPU] ORT={ort.__version__} provider={provider} adapter={device} "
         f"tile={size} optimization={optimization}",
         flush=True,
     )
+    providers = ["CPUExecutionProvider"] if provider == "cpu" else [
+        "DmlExecutionProvider", "CPUExecutionProvider",
+    ]
+    options = [{}] if provider == "cpu" else [{"device_id": str(device)}, {}]
     session = ort.InferenceSession(
-        str(spec.model_path),
-        sess_options=opts,
-        providers=["DmlExecutionProvider", "CPUExecutionProvider"],
-        provider_options=[{"device_id": str(device)}, {}],
+        str(spec.model_path), sess_options=opts,
+        providers=providers, provider_options=options,
     )
     print("[SCUNet GPU] Sessão criada; executando primeiro Run()...", flush=True)
     name = session.get_inputs()[0].name
@@ -98,7 +101,7 @@ def child(manifest: Path, device: int, size: int, optimization: str) -> int:
             for event in profile if event.get("cat") == "Node"
         )
         print(json.dumps({
-            "ok": providers["DmlExecutionProvider"] > 0,
+            "ok": providers["CPUExecutionProvider"] > 0 if provider == "cpu" else providers["DmlExecutionProvider"] > 0,
             "dml_nodes": providers["DmlExecutionProvider"],
             "cpu_nodes": providers["CPUExecutionProvider"],
             "output_shape": list(output.shape),
@@ -106,20 +109,23 @@ def child(manifest: Path, device: int, size: int, optimization: str) -> int:
             "adapter": device,
             "tile": size,
         }, ensure_ascii=False), flush=True)
-        return 0 if providers["DmlExecutionProvider"] else 3
+        used = providers["CPUExecutionProvider"] if provider == "cpu" else providers["DmlExecutionProvider"]
+        return 0 if used else 3
     finally:
         profile_path.unlink(missing_ok=True)
 
 
 def run_variant(manifest: Path, device: int, size: int, optimization: str,
-                timeout: int = 90, runner=subprocess.run) -> dict:
+                timeout: int = 90, runner=subprocess.run, provider: str = "directml") -> dict:
     command = [
         sys.executable, "-u", "-X", "faulthandler",
         "-m", "scripts.diagnose_scunet_variants",
         "--child", "--manifest", str(manifest), "--device", str(device),
         "--size", str(size), "--optimization", optimization,
+        "--provider", provider,
     ]
-    result = {"adapter": device, "size": size, "optimization": optimization, "ok": False}
+    result = {"adapter": device, "size": size, "optimization": optimization,
+              "provider": provider, "ok": False}
     try:
         run = runner(
             command, cwd=str(ROOT), capture_output=True, text=True, errors="replace",
@@ -146,6 +152,8 @@ def main() -> None:
     p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     p.add_argument("--devices", type=int, nargs="*", default=[0, 1])
     p.add_argument("--device", type=int, default=0, help=argparse.SUPPRESS)
+    p.add_argument("--provider", choices=("directml", "cpu"), default="directml",
+                   help=argparse.SUPPRESS)
     p.add_argument("--size", type=int, default=64)
     p.add_argument("--optimization", choices=tuple(OPT_LEVELS), default="disable")
     p.add_argument("--timeout", type=int, default=90)
@@ -159,7 +167,8 @@ def main() -> None:
     if args.size not in (64, 128, 256) or any(x not in (0, 1, 2, 3) for x in args.devices) or not 15 <= args.timeout <= 240:
         p.error("Tamanho/device/timeout fora dos limites.")
     if args.child:
-        raise SystemExit(child(args.manifest, args.device, args.size, args.optimization))
+        raise SystemExit(child(args.manifest, args.device, args.size,
+                               args.optimization, args.provider))
     if args.inspect_only:
         print(json.dumps(describe_graph(args.manifest), indent=2, ensure_ascii=False))
         return
@@ -175,8 +184,19 @@ def main() -> None:
         "model": describe_graph(args.manifest),
         "checks": [],
     }
+    # Establish that this SCUNet shape works at all on CPU before risking
+    # native GPU faults. A malformed 64x64 shape should not implicate DML.
+    print(f"[BASELINE] SCUNet CPU {args.size}x{args.size}, sem otimizações", flush=True)
+    baseline = run_variant(args.manifest, 0, args.size, "disable",
+                           args.timeout, provider="cpu")
+    report["checks"].append(baseline)
+    if not baseline["ok"]:
+        print("[FALHA] Até a execução CPU falhou nesta dimensão. "
+              "Não é possível interpretar os testes GPU.", flush=True)
+        if baseline.get("stderr"):
+            print(baseline["stderr"][-1000:], flush=True)
     levels = ["disable", "basic"] + (["extended", "all"] if args.full else [])
-    for device in dict.fromkeys(args.devices):
+    for device in (dict.fromkeys(args.devices) if baseline["ok"] else []):
         successes = []
         for level in levels:
             print(f"[TESTE] adaptador={device}, {args.size}x{args.size}, otimização={level}", flush=True)
