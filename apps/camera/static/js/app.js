@@ -339,7 +339,10 @@
     }
     if (state === "ready") {
       const adapter = result.device_id != null ? " · adaptador " + result.device_id : "";
-      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + adapter + " · " + result.task + ".";
+      const tile = result.tile_size ? " · blocos " + result.tile_size + "px" : "";
+      const graph = result.graph_profile === "basic+fixed_dims"
+        ? " · ONNX BASIC + dimensões fixas" : "";
+      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + adapter + tile + graph + " · " + result.task + ".";
     } else if (state === "loading") {
       node.textContent = "Verificando hash, licença informada e preparando sessão ONNX...";
     } else if (state === "error") {
