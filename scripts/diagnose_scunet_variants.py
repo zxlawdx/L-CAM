@@ -55,7 +55,7 @@ def describe_graph(manifest: Path) -> dict:
 
 
 def child(manifest: Path, device: int, size: int, optimization: str,
-          provider: str = "directml") -> int:
+          provider: str = "directml", fixed_dims: bool = True) -> int:
     from apps.camera.services.inference import OnnxModelSpec
     import numpy as np
     import onnxruntime as ort
@@ -69,6 +69,12 @@ def child(manifest: Path, device: int, size: int, optimization: str,
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     opts.enable_mem_pattern = False
     opts.enable_profiling = True
+    if fixed_dims:
+        # The published ONNX graph uses free dimensions batch/height/width.
+        # ONNX Runtime DirectML recommends overriding them before session init.
+        # This option is local to the subprocess; no weights/model are changed.
+        for symbol, value in (("batch", 1), ("height", size), ("width", size)):
+            opts.add_free_dimension_override_by_name(symbol, value)
 
     # Only reduce shape-dependent resource allocations for this experiment.
     input_dims = spec.input_alignment
@@ -76,7 +82,7 @@ def child(manifest: Path, device: int, size: int, optimization: str,
         raise ValueError("Dimensão não alinhada ao modelo.")
     print(
         f"[SCUNet GPU] ORT={ort.__version__} provider={provider} adapter={device} "
-        f"tile={size} optimization={optimization}",
+        f"tile={size} optimization={optimization} fixed_dims={fixed_dims}",
         flush=True,
     )
     providers = ["CPUExecutionProvider"] if provider == "cpu" else [
@@ -108,6 +114,7 @@ def child(manifest: Path, device: int, size: int, optimization: str,
             "optimization": optimization,
             "adapter": device,
             "tile": size,
+            "fixed_dims": fixed_dims,
         }, ensure_ascii=False), flush=True)
         used = providers["CPUExecutionProvider"] if provider == "cpu" else providers["DmlExecutionProvider"]
         return 0 if used else 3
@@ -116,16 +123,18 @@ def child(manifest: Path, device: int, size: int, optimization: str,
 
 
 def run_variant(manifest: Path, device: int, size: int, optimization: str,
-                timeout: int = 90, runner=subprocess.run, provider: str = "directml") -> dict:
+                timeout: int = 90, runner=subprocess.run, provider: str = "directml",
+                fixed_dims: bool = True) -> dict:
     command = [
         sys.executable, "-u", "-X", "faulthandler",
         "-m", "scripts.diagnose_scunet_variants",
         "--child", "--manifest", str(manifest), "--device", str(device),
         "--size", str(size), "--optimization", optimization,
         "--provider", provider,
+        "--fixed-dims" if fixed_dims else "--dynamic-dims",
     ]
     result = {"adapter": device, "size": size, "optimization": optimization,
-              "provider": provider, "ok": False}
+              "provider": provider, "fixed_dims": fixed_dims, "ok": False}
     try:
         run = runner(
             command, cwd=str(ROOT), capture_output=True, text=True, errors="replace",
@@ -157,6 +166,10 @@ def main() -> None:
     p.add_argument("--size", type=int, default=64)
     p.add_argument("--optimization", choices=tuple(OPT_LEVELS), default="disable")
     p.add_argument("--timeout", type=int, default=90)
+    p.add_argument("--fixed-dims", dest="fixed_dims", action="store_true", default=True,
+                   help=argparse.SUPPRESS)
+    p.add_argument("--dynamic-dims", dest="fixed_dims", action="store_false",
+                   help="Executa sem substituir batch/height/width; mais parecido com configuração anterior")
     p.add_argument("--full", action="store_true",
                    help="Inclui Extended e All. Por padrão faz só Disable e Basic.")
     p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
@@ -168,7 +181,7 @@ def main() -> None:
         p.error("Tamanho/device/timeout fora dos limites.")
     if args.child:
         raise SystemExit(child(args.manifest, args.device, args.size,
-                               args.optimization, args.provider))
+                               args.optimization, args.provider, args.fixed_dims))
     if args.inspect_only:
         print(json.dumps(describe_graph(args.manifest), indent=2, ensure_ascii=False))
         return
@@ -188,7 +201,7 @@ def main() -> None:
     # native GPU faults. A malformed 64x64 shape should not implicate DML.
     print(f"[BASELINE] SCUNet CPU {args.size}x{args.size}, sem otimizações", flush=True)
     baseline = run_variant(args.manifest, 0, args.size, "disable",
-                           args.timeout, provider="cpu")
+                           args.timeout, provider="cpu", fixed_dims=args.fixed_dims)
     report["checks"].append(baseline)
     if not baseline["ok"]:
         print("[FALHA] Até a execução CPU falhou nesta dimensão. "
@@ -200,7 +213,8 @@ def main() -> None:
         successes = []
         for level in levels:
             print(f"[TESTE] adaptador={device}, {args.size}x{args.size}, otimização={level}", flush=True)
-            result = run_variant(args.manifest, device, args.size, level, args.timeout)
+            result = run_variant(args.manifest, device, args.size, level,
+                                 args.timeout, fixed_dims=args.fixed_dims)
             report["checks"].append(result)
             print("[OK]" if result["ok"] else "[FALHA]",
                   result.get("error") or result.get("stdout", "")[-600:], flush=True)
@@ -215,7 +229,8 @@ def main() -> None:
                 if size <= args.size:
                     continue
                 print(f"[CONFIRMAÇÃO] adaptador={device} {size}x{size}", flush=True)
-                result = run_variant(args.manifest, device, size, successes[0], args.timeout)
+                result = run_variant(args.manifest, device, size, successes[0],
+                                     args.timeout, fixed_dims=args.fixed_dims)
                 report["checks"].append(result)
                 print("[OK]" if result["ok"] else "[FALHA]",
                       result.get("error") or result.get("stdout", "")[-600:], flush=True)
