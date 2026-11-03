@@ -71,8 +71,8 @@ class LCamBridge(StarterBridge):
     def camera_start(self, index: int = 0) -> dict:
         return self._result(self.studio.start, index)
 
-    def camera_frame(self, original_preview: bool = False) -> dict:
-        return self._result(self.studio.frame, original_preview)
+    def camera_frame(self, original_preview: bool = False, last_sequence: int = -1) -> dict:
+        return self._result(self.studio.frame, original_preview, last_sequence)
 
     def camera_stop(self) -> dict:
         return self._result(self.studio.stop)
@@ -83,13 +83,51 @@ class LCamBridge(StarterBridge):
     def camera_configure(self, settings: dict) -> dict:
         if not isinstance(settings, dict):
             return {"ok": False, "error": "Configurações inválidas."}
-        fields = {"brightness", "contrast", "saturation", "denoise", "mode", "strength", "sharpness"}
+        fields = {"brightness", "contrast", "saturation", "denoise", "mode", "strength", "sharpness", "profile"}
         if set(settings) - fields:
             return {"ok": False, "error": "Configuração desconhecida."}
         return self._result(self.studio.configure, **settings)
 
-    def camera_record_start(self) -> dict:
-        return self._result(self.studio.record_start)
+    def camera_record_start(self, audio_device: int = -1) -> dict:
+        if type(audio_device) is not int or audio_device < -1:
+            return {"ok": False, "error": "Dispositivo de áudio inválido."}
+        return self._result(self.studio.record_start, 30.0, None if audio_device == -1 else audio_device)
+
+    def camera_audio_devices(self) -> dict:
+        return self._result(lambda: {"devices": self.studio.audio_devices()})
+
+    def camera_record_status(self) -> dict:
+        return self._result(self.studio.recording_status)
 
     def camera_record_stop(self) -> dict:
         return self._result(self.studio.record_stop)
+
+    def camera_model_load(self, manifest_path: str, provider: str = "auto") -> dict:
+        """Start loading a verified local ONNX model; never download weights."""
+        return self._result(self.studio.model_load, manifest_path, provider)
+
+    def camera_model_status(self) -> dict:
+        return self._result(self.studio.model_status)
+
+    def camera_model_unload(self) -> dict:
+        return self._result(self.studio.model_unload)
+
+    def camera_presets_list(self) -> dict:
+        return self._result(self.studio.presets_list)
+
+    def camera_presets_save(self, name: str) -> dict:
+        return self._result(self.studio.presets_save, name)
+
+    def camera_presets_apply(self, name: str) -> dict:
+        return self._result(self.studio.presets_apply, name)
+
+    def camera_presets_delete(self, name: str) -> dict:
+        return self._result(self.studio.presets_delete, name)
+
+    def camera_model_catalog(self) -> dict:
+        """Report SCUNet installation availability to the Vela UI."""
+        return self._result(self.studio.model_catalog)
+
+    def camera_scunet_load(self, provider: str = "auto") -> dict:
+        """Activate the locally verified SCUNet model without manual paths."""
+        return self._result(self.studio.model_load_default, provider)

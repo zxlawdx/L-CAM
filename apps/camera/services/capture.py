@@ -67,6 +67,47 @@ class CameraCapture:
                 raise RuntimeError("Falha ao capturar um quadro da câmera.")
             return frame
 
+    def info(self) -> dict:
+        """Read negotiated driver values without changing exposure or gain.
+
+        CAP_PROP_EXPOSURE and AUTO_EXPOSURE values are driver-specific.
+        Exposing the raw values is safe; claiming universal units is not.
+        """
+        with self._lock:
+            camera = self._camera
+            if camera is None:
+                return {"active": False}
+
+            def prop(key):
+                try:
+                    return float(camera.get(key))
+                except (AttributeError, cv2.error, ValueError):
+                    return None
+
+            def fourcc(raw):
+                if raw is None:
+                    return None
+                value = int(raw)
+                chars = "".join(chr((value >> (8 * n)) & 0xFF) for n in range(4))
+                return chars if chars.isprintable() else None
+
+            try:
+                backend = camera.getBackendName()
+            except (AttributeError, cv2.error):
+                backend = "unknown"
+            return {
+                "active": True,
+                "backend": backend,
+                "width": prop(cv2.CAP_PROP_FRAME_WIDTH),
+                "height": prop(cv2.CAP_PROP_FRAME_HEIGHT),
+                "requested_fps": self.preferred_fps,
+                "driver_reported_fps": prop(cv2.CAP_PROP_FPS),
+                "fourcc": fourcc(prop(cv2.CAP_PROP_FOURCC)),
+                "auto_exposure_raw": prop(cv2.CAP_PROP_AUTO_EXPOSURE),
+                "exposure_raw": prop(cv2.CAP_PROP_EXPOSURE),
+                "gain_raw": prop(cv2.CAP_PROP_GAIN),
+            }
+
     def stop(self) -> None:
         with self._lock:
             if self._camera is not None:

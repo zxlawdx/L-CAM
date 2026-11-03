@@ -9,10 +9,13 @@
   let ready = false;
   let active = false;
   let recording = false;
+  let finalizing = false;
   let originalPreview = false;
   let previewTimer = null;
   let adjustmentTimer = null;
   let lastMetricsAt = 0;
+  let lastSequence = -1;
+  let modelPoll = null;
   const modes = {
     auto: "Identifica pouca luz e corrige sombras de forma adaptativa.",
     low_light: "Reforça iluminação de sombras, preservando realces quando possível.",
@@ -31,10 +34,11 @@
   function setControls() {
     $("start").disabled = !ready || active;
     $("stop").disabled = !active || recording;
-    $("record").disabled = !active || recording;
+    $("record").disabled = !active || recording || finalizing;
     $("finish").disabled = !recording;
     $("compare").disabled = !active;
     $("device").disabled = active;
+    $("microphone").disabled = recording || finalizing;
   }
   async function call(method, ...args) {
     const api = window.pywebview?.api;
@@ -53,6 +57,10 @@
       ready = true;
       $("runtime").textContent = "● Vela conectado";
       setControls();
+      refreshAudioDevices();
+      refreshPresets();
+      refreshModelState();
+      refreshScunet();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -69,7 +77,8 @@
       denoise: $("denoise").checked,
       mode: $("mode").value,
       strength: Number($("strength").value) / 100,
-      sharpness: Number($("sharpness").value) / 100
+      sharpness: Number($("sharpness").value) / 100,
+      profile: $("profile").value
     };
   }
   function labels() {
@@ -79,6 +88,13 @@
     $("strength-val").textContent = $("strength").value + "%";
     $("sharpness-val").textContent = $("sharpness").value + "%";
     $("mode-help").textContent = modes[$("mode").value] || "";
+    const fast = $("profile").value === "fast";
+    $("profile-help").textContent = fast
+      ? "CPU leve: sombras equilibradas, proteção de realces e ruído cromático em meia resolução, sem borrar os detalhes da luminância."
+      : "Modo clássico anterior: redução temporal + bilateral + CLAHE; costuma consumir mais CPU.";
+    $("denoise-label").textContent = fast
+      ? "Reduzir ruído de cor (preserva textura)"
+      : "Reduzir ruído de cor e textura (legado)";
     $("strength").disabled = $("mode").value === "off" && !$("denoise").checked;
   }
   async function syncSettings() {
@@ -95,14 +111,26 @@
     if (now - lastMetricsAt < 450) return;
     lastMetricsAt = now;
     $("resolution").textContent = result.width + " × " + result.height;
-    $("fps").textContent = result.preview_fps + " FPS";
-    $("processing").textContent = result.processing_ms + " ms/processamento";
+    $("fps").textContent = "Captura " + result.capture_fps + " · Process. " + result.process_fps + " · Prévia " + result.preview_fps + " FPS";
+    $("processing").textContent = result.processing_ms + " ms/filtro · " + result.latency_ms + " ms/latência";
+    const capture = Number(result.capture_fps);
+    const processed = Number(result.process_fps);
+    if (Number.isFinite(capture) && capture > 0) {
+      $("capture-hint").textContent = capture < 18 && processed >= capture * 0.8
+        ? "Captura real: " + capture.toFixed(1) + " FPS. O filtro consegue acompanhar; baixa luz/exposição automática ou driver podem limitar a câmera. Teste uma luz frontal e rode diagnose_exposure."
+        : "Captura real: " + capture.toFixed(1) + " FPS · processamento: " + processed.toFixed(1) + " FPS. Medidos separadamente; prévia não inventa quadros.";
+    }
   }
   async function preview() {
     if (disposed || !active) return;
     try {
-      const result = await call("camera_frame", originalPreview);
+      const result = await call("camera_frame", originalPreview, lastSequence);
       if (disposed || !active) return;
+      if (result.waiting || result.unchanged) {
+        previewTimer = setTimeout(preview, 30);
+        return;
+      }
+      if (Number.isInteger(result.sequence)) lastSequence = result.sequence;
       $("frame").src = result.image;
       $("frame").hidden = false;
       $("empty").hidden = true;
@@ -130,6 +158,7 @@
       await call("camera_configure", settings());
       if (disposed) return;
       active = true;
+      lastSequence = -1;
       status("● Câmera ativa", "active");
       notify("Prévia iniciada. Use Ver original para comparar sem alterar a gravação.");
       setControls();
@@ -143,6 +172,7 @@
   async function stop() {
     if (recording) return;
     active = false;
+    lastSequence = -1;
     clearTimeout(previewTimer);
     setControls();
     try { await call("camera_stop"); }
@@ -160,10 +190,11 @@
   async function startRecording() {
     $("record").disabled = true;
     try {
-      const result = await call("camera_record_start");
+      const device = Number($("microphone").value);
+      const result = await call("camera_record_start", device);
       recording = true;
       status("● Gravando", "recording");
-      notify("Gravando MP4 sem áudio: " + result.path);
+      notify("Gravando " + (result.audio ? "vídeo com microfone" : "vídeo sem áudio") + ": " + result.path);
       setControls();
     } catch (error) {
       notify(error.message, true);
@@ -175,8 +206,9 @@
     try {
       const result = await call("camera_record_stop");
       recording = false;
-      status("● Câmera ativa", "active");
-      notify("Vídeo salvo: " + result.path + " (sem áudio)");
+      finalizing = !!result.finalizing;
+      status(finalizing ? "● Finalizando áudio" : "● Câmera ativa", finalizing ? "recording" : "active");
+      notify(finalizing ? "Finalizando MP4 com FFmpeg. Aguarde: " + result.path : "Vídeo salvo: " + result.path + " (sem áudio)");
       setControls();
     } catch (error) {
       notify(error.message, true);
@@ -185,12 +217,14 @@
   }
   function compare() {
     originalPreview = !originalPreview;
+    lastSequence = -1;
     $("compare").setAttribute("aria-pressed", String(originalPreview));
     $("compare").textContent = originalPreview ? "Ver aprimorada" : "Ver original";
   }
   function reset() {
     $("mode").value = "auto";
-    $("strength").value = "70";
+    $("profile").value = "fast";
+    $("strength").value = "40";
     $("sharpness").value = "10";
     $("brightness").value = "0";
     $("contrast").value = "1";
@@ -206,13 +240,210 @@
   $("finish").addEventListener("click", stopRecording);
   $("compare").addEventListener("click", compare);
   $("reset").addEventListener("click", reset);
-  for (const name of ["mode", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
+  for (const name of ["mode", "profile", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
     $(name).addEventListener("input", () => {
       labels();
       clearTimeout(adjustmentTimer);
       adjustmentTimer = setTimeout(syncSettings, 140);
     });
   }
+
+
+  async function refreshAudioDevices() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_audio_devices");
+      const select = $("microphone");
+      select.innerHTML = "";
+      select.append(new Option("Sem áudio (somente vídeo)", "-1"));
+      for (const device of result.devices || []) {
+        select.append(new Option(device.name + " (" + device.channels + " canais)", String(device.id)));
+      }
+      $("audio-help").textContent = result.devices?.length
+        ? "Para gravar com microfone, selecione o dispositivo. Exige FFmpeg instalado."
+        : "Microfone indisponível. Instale sounddevice para habilitar áudio.";
+    } catch (error) {
+      $("audio-help").textContent = "Não foi possível detectar microfones: " + error.message;
+    }
+  }
+  async function refreshRecordingStatus() {
+    if (!finalizing || disposed || !ready) return;
+    try {
+      const result = await call("camera_record_status");
+      const state = result.finalizer?.state;
+      if (state === "done") {
+        finalizing = false;
+        status("● Câmera ativa", "active");
+        notify("MP4 com áudio finalizado: " + result.finalizer.output);
+        setControls();
+      } else if (state === "error") {
+        finalizing = false;
+        status("● Erro de finalização");
+        notify("FFmpeg falhou; vídeo e WAV temporários preservados. " + result.finalizer.error, true);
+        setControls();
+      }
+    } catch (error) {
+      notify("Falha ao consultar finalização: " + error.message, true);
+    }
+  }
+
+  async function refreshPresets() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_presets_list");
+      const select = $("preset-select");
+      const previous = select.value;
+      select.innerHTML = "";
+      select.append(new Option("Selecionar perfil...", ""));
+      for (const name of result.presets || []) {
+        select.append(new Option(name, name));
+      }
+      if ([...select.options].some(option => option.value === previous)) select.value = previous;
+    } catch (error) {
+      $("preset-status").textContent = error.message;
+    }
+  }
+  function presetMessage(message) {
+    $("preset-status").textContent = message;
+  }
+  async function savePreset() {
+    const name = $("preset-name").value.trim();
+    if (!name) { presetMessage("Informe um nome para o perfil."); return; }
+    try {
+      await call("camera_presets_save", name);
+      await refreshPresets();
+      $("preset-select").value = name;
+      presetMessage("Perfil salvo: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  async function applyPreset() {
+    const name = $("preset-select").value;
+    if (!name) { presetMessage("Escolha um perfil."); return; }
+    try {
+      const result = await call("camera_presets_apply", name);
+      const values = result.settings;
+      for (const field of ["brightness", "contrast", "saturation"]) $(field).value = values[field];
+      $("mode").value = values.mode;
+      $("profile").value = values.profile || "fast";
+      $("strength").value = Math.round(values.strength * 100);
+      $("sharpness").value = Math.round(values.sharpness * 100);
+      $("denoise").checked = !!values.denoise;
+      labels();
+      presetMessage("Perfil aplicado: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  async function deletePreset() {
+    const name = $("preset-select").value;
+    if (!name) { presetMessage("Escolha um perfil."); return; }
+    try {
+      await call("camera_presets_delete", name);
+      await refreshPresets();
+      presetMessage("Perfil excluído: " + name);
+    } catch (error) { presetMessage(error.message); }
+  }
+  $("preset-save").addEventListener("click", savePreset);
+  $("preset-apply").addEventListener("click", applyPreset);
+  $("preset-delete").addEventListener("click", deletePreset);
+  function showModelState(result) {
+    const node = $("model-status");
+    const state = result?.state || "off";
+    node.dataset.state = state;
+    const badge = $("ai-indicator");
+    if (badge) {
+      badge.textContent = state === "ready" ? "IA ativa: " + result.name
+        : state === "loading" ? "IA carregando..."
+        : state === "error" ? "IA indisponível" : "IA desligada";
+    }
+    if (state === "ready") {
+      const adapter = result.device_id != null ? " · adaptador " + result.device_id : "";
+      const tile = result.tile_size ? " · blocos " + result.tile_size + "px" : "";
+      const graph = result.graph_profile === "basic+fixed_dims"
+        ? " · ONNX BASIC + dimensões fixas" : "";
+      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + adapter + tile + graph + " · " + result.task + ".";
+    } else if (state === "loading") {
+      node.textContent = "Verificando hash, licença informada e preparando sessão ONNX...";
+    } else if (state === "error") {
+      node.textContent = "IA indisponível — filtro clássico ativo. " + (result.error || "Falha desconhecida.");
+    } else {
+      node.textContent = "IA desligada — processamento clássico ativo.";
+    }
+  }
+
+  async function refreshScunet() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_model_catalog");
+      const model = (result.models || [])[0];
+      const installed = !!model?.installed;
+      $("scunet-activate").disabled = !installed;
+      $("scunet-status").textContent = installed
+        ? "SCUNet Real-PSNR instalado: pronto para testar DirectML/CPU."
+        : "SCUNet não instalado. Execute o script setup_scunet_windows.ps1.";
+      if (installed && $("model-manifest") && !$("model-manifest").value) {
+        $("model-manifest").value = model.manifest;
+      }
+    } catch (error) {
+      $("scunet-status").textContent = "Erro ao verificar modelo: " + error.message;
+    }
+  }
+  async function activateScunet() {
+    $("scunet-activate").disabled = true;
+    // DnCNN's 320x180 upscaling caused blur. SCUNet instead preserves the
+    // camera's full resolution and intentionally disables stacked denoisers.
+    $("mode").value = "off";
+    $("profile").value = "fast";
+    $("strength").value = "40";
+    $("sharpness").value = "10";
+    $("denoise").checked = false;
+    labels();
+    try {
+      await syncSettings();
+      const selected = $("model-provider").value;
+      showModelState(await call("camera_scunet_load", selected));
+      notify("SCUNet: preparando ONNX. Aguarde o indicador IA ativa.");
+    } catch (error) {
+      showModelState({state: "error", error: error.message});
+      notify(error.message, true);
+    } finally {
+      await refreshScunet();
+    }
+  }
+  $("scunet-activate").addEventListener("click", activateScunet);
+
+  async function refreshModelState() {
+    if (!ready || disposed) return;
+    try {
+      showModelState(await call("camera_model_status"));
+    } catch (error) {
+      $("model-status").dataset.state = "error";
+      $("model-status").textContent = "Falha consultando IA: " + error.message;
+    }
+  }
+  async function loadModel() {
+    const manifest = $("model-manifest").value.trim();
+    if (!manifest) {
+      showModelState({ state: "error", error: "Informe o caminho de um manifesto JSON." });
+      return;
+    }
+    $("model-load").disabled = true;
+    try {
+      showModelState(await call("camera_model_load", manifest, $("model-provider").value));
+    } catch (error) {
+      showModelState({ state: "error", error: error.message });
+    } finally {
+      $("model-load").disabled = false;
+    }
+  }
+  async function unloadModel() {
+    try {
+      showModelState(await call("camera_model_unload"));
+    } catch (error) {
+      showModelState({ state: "error", error: error.message });
+    }
+  }
+  $("model-load").addEventListener("click", loadModel);
+  $("model-unload").addEventListener("click", unloadModel);
+  modelPoll = setInterval(() => { refreshModelState(); refreshRecordingStatus(); }, 2000);
   labels();
   setControls();
   window.addEventListener("pywebviewready", connect);
@@ -222,6 +453,7 @@
       active = false;
       clearTimeout(previewTimer);
       clearTimeout(adjustmentTimer);
+      clearInterval(modelPoll);
       const api = window.pywebview?.api;
       if (typeof api?.camera_stop === "function") api.camera_stop().catch(() => {});
     }

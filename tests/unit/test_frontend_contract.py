@@ -8,6 +8,9 @@ def test_camera_ui_declares_all_new_controls():
         "mode", "strength", "sharpness", "denoise", "brightness", "contrast",
         "saturation", "reset", "compare", "resolution", "fps", "processing",
         "start", "stop", "record", "finish", "device",
+        "microphone", "audio-help", "model-manifest", "model-provider",
+        "model-load", "model-unload", "model-status", "preset-select",
+        "preset-name", "preset-save", "preset-apply", "preset-delete",
     ):
         assert f'id="lcam-{name}"' in template
 
