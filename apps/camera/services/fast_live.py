@@ -97,7 +97,9 @@ class FastLiveEnhancer:
         if mode == "off" or strength <= 0:
             return y
         small = self._thumbnail(y)
-        percentile = float(np.percentile(small, 25))
+        # Look at the darker 15% instead of the global mean: a bright wall
+        # must not prevent us from lifting the person in front of it.
+        percentile = float(np.percentile(small, 15))
         if self._shadow_percentile is None or abs(percentile - self._shadow_percentile) > 50:
             self._shadow_percentile = percentile
         else:
@@ -109,7 +111,7 @@ class FastLiveEnhancer:
             darkness = np.clip((135 - self._shadow_percentile) / 100, 0, 1)
             amount = strength * (0.45 + 0.55 * darkness)
         else:  # auto: only lift when shadows actually need it.
-            amount = strength * np.clip((130 - self._shadow_percentile) / 90, 0, 1)
+            amount = strength * np.clip((160 - self._shadow_percentile) / 110, 0, 1)
         return cv2.LUT(y, shadow_lut(int(round(amount * 100))))
 
     def process(self, frame, settings):
