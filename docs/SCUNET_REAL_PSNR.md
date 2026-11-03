@@ -133,3 +133,25 @@ python -u -m scripts.diagnose_scunet
 O relatório estará em `logs/scunet-diagnostic-*.json`, com CPU e DirectML device_id 0/1. Se nenhum adaptador DirectML passar, **não tente forçar a IA no aplicativo**; envie o relatório para identificar o erro. Na interface, só selecione o adaptador que passou. O índice DXGI não corresponde necessariamente ao número mostrado pelo `nvidia-smi`.
 
 Ainda não há prova de 720p/30FPS na GTX 1650 e uma falha grave de driver em nível de sistema pode afetar a GPU compartilhada, mesmo com processo isolado. Em caso de lentidão, a comparação por foto é o caminho recomendado.
+
+## Diagnóstico conclusivo após o crash `0xC0000005` nos adaptadores 0 e 1
+
+O diagnóstico do Acer Nitro com Python 3.14.4 mostrou que o SCUNet inicia na CPU e realiza inferência (aproximadamente **0,45 FPS para 256×256**), mas **`DmlExecutionProvider` encerra o processo nativo no `session.run()` tanto no adaptador 0 quanto no 1**. Isso não é erro de download, manifesto nem início do Vela.
+
+Para saber se DirectML falha com *qualquer* modelo ou apenas com a arquitetura SCUNet, foi incluído `scripts/diagnose_directml.py`. Ele gera automaticamente dois pequenos ONNX (`Add` e `Conv+Relu`), sem redes externas nem pesos, e executa CPU/DirectML nos dois adaptadores em **subprocessos independentes**. Usa o profiling do ONNX Runtime para exigir ao menos um nó efetivamente executado no DirectML (sem considerar fallback CPU como sucesso).
+
+```powershell
+git pull --ff-only origin feat/scunet-real-denoise
+python -m pip install "onnx>=1.16,<2"
+python -u -m scripts.diagnose_directml
+```
+
+O relatório fica em `logs/directml-minimal-*.json`. **Não exige abrir L-CAM, conectar webcam, reinstalar FFmpeg ou baixar o SCUNet novamente.**
+
+Interpretação:
+
+- `Add` e `Conv` falham com `0xC0000005` também: problema provável no runtime/driver DirectML da máquina; primeiro registrar versão do ORT e drivers, depois avaliar teste controlado com outra versão do pacote e, em seguida, CUDA ou WinML.
+- `Add` e `Conv` funcionam de verdade no DirectML: suspeita maior de incompatibilidade do SCUNet, sua exportação ONNX, shapes dinâmicos/operadores, otimização de grafo ou recursos de memória. Evitar repetir SCUNet na interface até corrigir esse caso.
+- Um adaptador passa e outro falha: selecionar apenas o que executou nós no DirectML, validando também a identidade física da GPU.
+
+**Nota de segurança:** o isolamento do ONNX protege contra encerramentos nativos do processo da aplicação, mas não garante que problemas de driver ou reinicializações da GPU não afetem outros programas. Não repetir testes contínuos quando houver instabilidade do vídeo no Windows.
