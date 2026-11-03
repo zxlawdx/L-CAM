@@ -60,3 +60,18 @@ def test_cpu_baseline_can_be_requested_in_separate_child(tmp_path):
     assert result["provider"] == "cpu"
     args = calls[0]
     assert args[args.index("--provider") + 1] == "cpu"
+
+
+def test_dynamic_override_switch_reaches_child(tmp_path):
+    calls = []
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+    result = run_variant(
+        tmp_path / "model.json", 1, 128, "disable",
+        runner=runner, fixed_dims=False
+    )
+    assert result["ok"]
+    assert result["fixed_dims"] is False
+    assert "--dynamic-dims" in calls[0]
+    assert "--fixed-dims" not in calls[0]
