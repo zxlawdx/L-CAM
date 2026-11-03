@@ -17,7 +17,7 @@ def test_synthetic_benchmark_is_labeled_and_completes():
     assert result["image_width"] == 96
     assert result["image_height"] == 64
     assert result["speedup_vs_legacy"] > 0
-    assert "não mede webcam" not in result["note"]  # labels actual scope clearly
+    assert "Não mede webcam" in result["note"]  # scope must remain explicit
 
 
 def test_ab_exports_original_fast_and_legacy_as_full_size_png(tmp_path):
