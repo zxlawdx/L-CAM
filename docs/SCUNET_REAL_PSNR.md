@@ -93,3 +93,22 @@ Se o adaptador 1 passar e o 0 falhar, selecione **DirectML — adaptador 1** no 
 **Não tente forçar o SCUNet na interface antes de uma inferência DirectML passar no diagnóstico**: uma falha nativa do ONNX Runtime no processo principal pode encerrar todo o aplicativo. Se CPU passar e DirectML falhar, a rede ONNX e os pesos são utilizáveis, mas a rota GPU precisa de correção; SCUNet na CPU ainda será provavelmente lento demais para prévia em tempo real.
 
 A documentação do DirectML exige memória-pattern desligada e modo sequencial, que o adaptador do L-CAM configura. A mera presença de `DmlExecutionProvider` não valida execução do modelo.
+
+## Correção do encerramento do L-CAM ao ativar SCUNet
+
+Anteriormente a sessão ONNX Runtime DirectML era criada e executada **dentro do mesmo Python do Vela/pywebview**. Um erro em código nativo pode encerrar o processo sem traceback nem chance de `try/except` funcionar.
+
+Agora `AsyncModelManager` usa `IsolatedOnnxRuntimeEngine`: um **subprocesso Python persistente** carrega a sessão ONNX e recebe os frames via protocolo binário limitado; o processo principal do L-CAM apenas se comunica com ele. Se houver falha nativa, timeout ou frame inválido, `RealtimePipeline` volta ao `BasicEnhancer`, mantém a webcam e gravação abertas e publica a causa no status do modelo. O worker tem encerramento explícito e cada frame é limitado por tamanho e tempo para impedir filas ilimitadas.
+
+Testes de regressão simulam `os._exit()` durante carga e durante um frame, falha de retorno, saída malformada e worker travado. O teste com SCUNet real na CI usa CPU e processo separado; **isso não demonstra compatibilidade com DirectML na GTX 1650**.
+
+Para descobrir a causa de travamento do DirectML sem colocar o aplicativo em risco, feche a câmera e execute:
+
+```powershell
+git pull --ff-only origin feat/scunet-real-denoise
+python -u -m scripts.diagnose_scunet
+```
+
+O diagnóstico testa CPU e adaptadores DirectML 0/1 em subprocessos individuais e salva o relatório JSON em `logs/scunet-diagnostic-*.json`. A disponibilidade de `DmlExecutionProvider` isoladamente não comprova que o modelo executará.
+
+Após diagnosticar, rode `python manage.py collectstatic --no-tailwind --no-install` e `python manage.py runapp`. Se a ativação da IA falhar, ela deverá voltar ao processamento clássico e apresentar erro no painel, em vez de encerrar o Vela. **Não há garantia de que uma falha de driver de vídeo afete apenas o subprocesso**; mantenha drivers e Windows atualizados e reporte o código de saída.
