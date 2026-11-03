@@ -112,3 +112,24 @@ python -u -m scripts.diagnose_scunet
 O diagnóstico testa CPU e adaptadores DirectML 0/1 em subprocessos individuais e salva o relatório JSON em `logs/scunet-diagnostic-*.json`. A disponibilidade de `DmlExecutionProvider` isoladamente não comprova que o modelo executará.
 
 Após diagnosticar, rode `python manage.py collectstatic --no-tailwind --no-install` e `python manage.py runapp`. Se a ativação da IA falhar, ela deverá voltar ao processamento clássico e apresentar erro no painel, em vez de encerrar o Vela. **Não há garantia de que uma falha de driver de vídeo afete apenas o subprocesso**; mantenha drivers e Windows atualizados e reporte o código de saída.
+
+## Correção de encerramento do L-CAM ao ativar SCUNet
+
+A versão inicial criava a sessão ONNX/DirectML no **mesmo processo do Vela**. Um erro nativo do driver podia encerrar o aplicativo sem traceback. A versão atual executa todo o ONNX Runtime em `apps/camera/services/onnx_child.py`, iniciado por `IsolatedOnnxRuntimeEngine` em um processo separado.
+
+- O modelo é carregado e **um tile de inferência real é executado** no filho **antes** de aparecer `IA ativa`.
+- Se o subprocesso falhar durante a inicialização ou processamento, o Vela continua ativo, recebe um erro legível e retorna automaticamente aos filtros clássicos.
+- O protocolo `onnx_wire.py` transporta apenas JSON e bytes BGR, com limites de tamanho; nenhum pickle.
+- Há prazo de 65 s para ativação e limite de 8 s para cada quadro ao vivo. Se SCUNet for lento demais para a GTX 1650, ele é desativado com aviso, sem bloquear indefinidamente a prévia.
+- A escolha explícita `DirectML — adaptador 0` ou `adaptador 1` **não pode ser disfarçada como GPU** quando a sessão efetiva é CPU.
+- Testes com subprocessos falsos exercitam encerramento nativo, timeout e fallback; CI também executa o **modelo real em um subprocesso CPU**.
+
+Atualize com `git pull --ff-only origin feat/scunet-real-denoise`. **Não precisa baixar os pesos novamente.** Para investigar um notebook com gráficos híbridos (integrada + NVIDIA), feche a câmera e rode:
+
+```powershell
+python -u -m scripts.diagnose_scunet
+```
+
+O relatório estará em `logs/scunet-diagnostic-*.json`, com CPU e DirectML device_id 0/1. Se nenhum adaptador DirectML passar, **não tente forçar a IA no aplicativo**; envie o relatório para identificar o erro. Na interface, só selecione o adaptador que passou. O índice DXGI não corresponde necessariamente ao número mostrado pelo `nvidia-smi`.
+
+Ainda não há prova de 720p/30FPS na GTX 1650 e uma falha grave de driver em nível de sistema pode afetar a GPU compartilhada, mesmo com processo isolado. Em caso de lentidão, a comparação por foto é o caminho recomendado.
