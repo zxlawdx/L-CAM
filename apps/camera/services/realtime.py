@@ -68,7 +68,8 @@ class RealtimePipeline:
         with self._settings_lock:
             old = self._settings
             self._settings = settings
-            if old.mode != settings.mode or old.denoise != settings.denoise:
+            if (old.mode != settings.mode or old.denoise != settings.denoise
+                    or old.profile != settings.profile):
                 self._needs_reset = True
 
     def set_processor(self, processor) -> None:
