@@ -92,6 +92,8 @@ class IsolatedOnnxRuntimeEngine:
                 raise RuntimeError(msg.get("error") or "Worker ONNX não inicializou.")
             self.provider = str(msg["provider"])
             self.dml_device_id = msg.get("device_id")
+            self.tile_size = msg.get("tile_size")
+            self.graph_profile = msg.get("graph_profile", "default")
             log.info("ONNX isolado iniciado PID=%s, provider=%s", self._process.pid, self.provider)
         except Exception:
             self.close()
