@@ -71,3 +71,23 @@ python manage.py runapp
 Na interface Vela: **Modelos ONNX locais → Ativar SCUNet Real-PSNR**. A instalação e o smoke test são executados fora da UI. Não é necessário converter PTH com PyTorch.
 
 A GPU GTX 1650 4 GB não foi testada: o modelo é pesado e pode comprometer o FPS. Veja [documentação e ajustes de memória](docs/SCUNET_REAL_PSNR.md). A saída do modelo e o desempenho são experimentais, **não certificados para gravação profissional**.
+
+## Novo motor leve para webcam ao vivo (sem pesos / sem dependências extras)
+
+Depois de medir o SCUNet com **19,39 segundos por quadro 720p** na GTX 1650 e observar ~10 FPS na captura original, o L-CAM ganhou o perfil **Leve · OpenCV (recomendado)** como motor padrão. O anterior pode ser selecionado a qualquer momento como **Clássico · comparação**. O Vela Framework, gravação, perfis e SCUNet para fotos continuam preservados.
+
+O novo motor utiliza LUT de sombras com proteção de realces, estima iluminação de regiões escuras (sem confundir a parede branca com o rosto) e reduz **ruído de cor em meia resolução**, mantendo os detalhes de luminância do quadro nativo. Não é uma rede neural nem uma promessa de super-resolução.
+
+**Windows, depois de mudar para `feat/lightweight-live-pipeline` e com `.venv` ativo:**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test_fast_live_windows.ps1 -Camera 0
+python manage.py collectstatic --no-install
+python manage.py runapp
+```
+
+O primeiro comando compara motor leve/clássico na câmera e diagnostica FPS real do sensor, sem modelos novos. Feche o L-CAM/OBS antes para evitar conflito de dispositivo. Resultados PNG em `Pictures/L-CAM/Comparisons`, relatórios em `logs/`.
+
+O benchmark de CPU num **runner Windows Python 3.14** mostrou 13,53 ms por quadro 720p sintético (p95 15,93 ms). **Isso não é a velocidade medida no Acer Nitro**; o sensor pode continuar em 10 FPS por exposição prolongada. Consulte a [investigação forense com fontes, código e limitações](docs/INVESTIGACAO_FORENSE_VIDEO_LEVE_2026.md).
+
+Em **02 / Aprimoramento → Motor de imagem**, use **Leve · OpenCV** e intensidade inicial 40%. Compare com o perfil anterior mantendo a mesma luz; use "Ver original" para alternar pixels brutos/aprimorados. O SCUNet ONNX continua experimental e pesado para prévia ao vivo.

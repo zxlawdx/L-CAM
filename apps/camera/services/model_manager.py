@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from .filters import BasicEnhancer
+from .profiled import ProfiledEnhancer
 from .inference import OnnxModelSpec, OnnxRuntimeEngine
 from .isolated_inference import IsolatedOnnxRuntimeEngine
 
@@ -74,7 +75,7 @@ class NeuralEnhancementProcessor:
         self.classical.reset()
 
     def fallback(self):
-        return BasicEnhancer()
+        return ProfiledEnhancer()
 
 
 class AsyncModelManager:
@@ -177,7 +178,7 @@ class AsyncModelManager:
     def unload(self) -> dict:
         with self._lock:
             self._generation += 1
-            self._on_ready(BasicEnhancer())
+            self._on_ready(ProfiledEnhancer())
             old = self._active_engine
             self._active_engine = None
             self._state = {"state": "off", "name": None, "provider": None, "task": None, "error": None}
