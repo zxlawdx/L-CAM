@@ -113,6 +113,13 @@
     $("resolution").textContent = result.width + " × " + result.height;
     $("fps").textContent = "Captura " + result.capture_fps + " · Process. " + result.process_fps + " · Prévia " + result.preview_fps + " FPS";
     $("processing").textContent = result.processing_ms + " ms/filtro · " + result.latency_ms + " ms/latência";
+    const capture = Number(result.capture_fps);
+    const processed = Number(result.process_fps);
+    if (Number.isFinite(capture) && capture > 0) {
+      $("capture-hint").textContent = capture < 18 && processed >= capture * 0.8
+        ? "Captura real: " + capture.toFixed(1) + " FPS. O filtro consegue acompanhar; baixa luz/exposição automática ou driver podem limitar a câmera. Teste uma luz frontal e rode diagnose_exposure."
+        : "Captura real: " + capture.toFixed(1) + " FPS · processamento: " + processed.toFixed(1) + " FPS. Medidos separadamente; prévia não inventa quadros.";
+    }
   }
   async function preview() {
     if (disposed || !active) return;
