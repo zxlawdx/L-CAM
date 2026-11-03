@@ -179,7 +179,7 @@ class OnnxRuntimeEngine:
                 if provider == "DmlExecutionProvider":
                     options.enable_mem_pattern = False
                     options.execution_mode = self._ort.ExecutionMode.ORT_SEQUENTIAL
-                    if spec.sha256 == SCUNET_REAL_PSNR_SHA256:
+                    if getattr(spec, "sha256", None) == SCUNET_REAL_PSNR_SHA256:
                         # Proven on Windows 11 with ORT DirectML 1.24.4:
                         # ORT_DISABLE_ALL causes native 0xC0000005 while
                         # ORT_ENABLE_BASIC + static tile dims executes GPU nodes.
