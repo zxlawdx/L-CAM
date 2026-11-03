@@ -155,3 +155,24 @@ Interpretação:
 - Um adaptador passa e outro falha: selecionar apenas o que executou nós no DirectML, validando também a identidade física da GPU.
 
 **Nota de segurança:** o isolamento do ONNX protege contra encerramentos nativos do processo da aplicação, mas não garante que problemas de driver ou reinicializações da GPU não afetem outros programas. Não repetir testes contínuos quando houver instabilidade do vídeo no Windows.
+
+## DirectML passou nos modelos mínimos; falta discriminar o grafo SCUNet
+
+O teste do usuário com **ONNX Runtime DirectML 1.24.4**, Python 3.14 e Windows 11 confirmou que ambos os adaptadores (0 e 1) executam, de verdade, os operadores `Add` e `Conv+Relu` na GPU. CPU e GPU passaram, e o profiling reportou `gpu_nodes >= 1`, sem fallback CPU nesses modelos.
+
+O SCUNet continua falhando em `session.run()` com `0xC0000005` nos dois adaptadores. Inspeção do arquivo ONNX oficial em CI: **opset 18, 2122 nós**, contendo `Einsum`, `LayerNormalization`, `ScatterND`, `ScatterElements`, `Range` e atenção. Assim, um teste de convolução isolada não é suficiente para provar compatibilidade de toda a rede.
+
+Foi criado `scripts/diagnose_scunet_variants.py` para distinguir problemas de forma dinâmica, otimização de grafo e tamanho de entrada. É um teste **experimental, que executa a GPU** e pode produzir falhas de driver nativas em subprocessos. Feche o L-CAM e outros aplicativos que usam a webcam. Execute, sem reinstalar nada:
+
+```powershell
+git pull --ff-only origin feat/scunet-real-denoise
+python -u -m scripts.diagnose_scunet_variants
+```
+
+O script primeiro testa a forma 64×64 na CPU; depois executa as duas GPUs com as otimizações ONNX desativadas e, se necessário, apenas as básicas. Se alguma configuração passar na GPU, aumenta gradualmente o tamanho até 256×256; falhando, encerra os testes para aquele adaptador. O resultado fica em `logs/scunet-compatibility-*.json`.
+
+Opcional: `python -m scripts.diagnose_scunet_variants --inspect-only` lista os operadores sem iniciar DirectML; `--full` inclui níveis de otimização Extended e All (mais tentativas, execute apenas se necessário).
+
+Não ative SCUNet no streaming ainda. Se a CPU 64×64 falhar, não tire conclusões sobre GPU antes de investigar o formato da entrada. Se uma combinação de GPU passar, será necessário suportá-la explicitamente no carregador e medi-la com blocos reais — não se deve presumir que a sessão padrão do L-CAM herdará as opções do diagnóstico.
+
+Há pacotes `onnxruntime-gpu` para Python 3.14/Windows, mas eles **não devem ser instalados por cima de `onnxruntime-directml` no mesmo ambiente**. Em caso de incompatibilidade persistente, considerar subprocesso CUDA em venv independente, após verificar driver e dependências CUDA/cuDNN.
