@@ -184,8 +184,12 @@ class OnnxRuntimeEngine:
                         # ORT_DISABLE_ALL causes native 0xC0000005 while
                         # ORT_ENABLE_BASIC + static tile dims executes GPU nodes.
                         # Each image tile is exactly tile_size x tile_size.
-                        if spec.tile_size is None:
-                            raise ValueError("SCUNet DirectML exige tile_size.")
+                        if spec.tile_size not in (64, 128, 256):
+                            raise ValueError(
+                                "SCUNet DirectML foi validado somente com blocos "
+                                "64, 128 ou 256. Atualize o manifest com "
+                                "python -m scripts.install_scunet --tile-size 256"
+                            )
                         options.graph_optimization_level = (
                             self._ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
                         )
