@@ -46,7 +46,7 @@ class IsolatedOnnxRuntimeEngine:
 
     def __init__(
         self, spec, preference="auto", *,
-        command=None, startup_timeout=90, frame_timeout=20,
+        command=None, startup_timeout=65, frame_timeout=8,
         process_factory=subprocess.Popen,
     ):
         spec.validate()
