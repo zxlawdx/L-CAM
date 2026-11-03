@@ -47,3 +47,16 @@ def test_explicit_cpu_fallback_not_marked_as_gpu_success(tmp_path):
         return subprocess.CompletedProcess(cmd, 3, '{"dml_nodes": 0, "cpu_nodes": 5}', "")
     result = run_variant(tmp_path / "m.json", 0, 64, "disable", runner=runner)
     assert not result["ok"]
+
+
+def test_cpu_baseline_can_be_requested_in_separate_child(tmp_path):
+    calls = []
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "cpu verified", "")
+    result = run_variant(tmp_path / "m.json", 0, 64, "disable",
+                         runner=runner, provider="cpu")
+    assert result["ok"]
+    assert result["provider"] == "cpu"
+    args = calls[0]
+    assert args[args.index("--provider") + 1] == "cpu"
