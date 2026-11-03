@@ -3,7 +3,7 @@
 # powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_scunet_windows.ps1
 [CmdletBinding()]
 param(
-    [ValidateSet(256,320,384,448,512)][int]$TileSize = 384,
+    [ValidateSet(256,320,384,448,512)][int]$TileSize = 256,
     [switch]$SkipBenchmark
 )
 
@@ -54,5 +54,5 @@ if (-not $SkipBenchmark) {
 Write-Host ''
 Write-Host 'Arquivos SCUNet instalados. So ative IA apos o diagnostico DirectML passar.' -ForegroundColor Green
 Write-Host "Manifest instalado: $Manifest"
-Write-Host 'Para investigar sem instalar novamente: python -u -m scripts.diagnose_scunet'
+Write-Host 'Para testar configuracao DirectML corrigida: python -u -m scripts.diagnose_scunet'
 Write-Host 'Iniciar L-CAM: python manage.py collectstatic --no-tailwind --no-install; python manage.py runapp'
