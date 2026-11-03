@@ -145,19 +145,24 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Investigar SCUNet/DirectML por otimização e tamanho")
     p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     p.add_argument("--devices", type=int, nargs="*", default=[0, 1])
+    p.add_argument("--device", type=int, default=0, help=argparse.SUPPRESS)
     p.add_argument("--size", type=int, default=64)
     p.add_argument("--optimization", choices=tuple(OPT_LEVELS), default="disable")
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--full", action="store_true",
                    help="Inclui Extended e All. Por padrão faz só Disable e Basic.")
     p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--inspect-only", action="store_true",
+                   help="Inspeciona grafo do SCUNet sem iniciar DirectML")
     args = p.parse_args()
 
     if args.size not in (64, 128, 256) or any(x not in (0, 1, 2, 3) for x in args.devices) or not 15 <= args.timeout <= 240:
         p.error("Tamanho/device/timeout fora dos limites.")
     if args.child:
-        raise SystemExit(child(args.manifest, args.devices[0] if args.devices else 0,
-                               args.size, args.optimization))
+        raise SystemExit(child(args.manifest, args.device, args.size, args.optimization))
+    if args.inspect_only:
+        print(json.dumps(describe_graph(args.manifest), indent=2, ensure_ascii=False))
+        return
 
     import onnxruntime as ort
     report = {
