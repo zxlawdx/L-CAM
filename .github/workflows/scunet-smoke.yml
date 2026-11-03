@@ -10,6 +10,7 @@ on:
       - "apps/camera/services/onnx_wire.py"
       - "scripts/install_scunet.py"
       - "scripts/benchmark_scunet.py"
+      - "scripts/diagnose_directml.py"
       - ".github/workflows/scunet-smoke.yml"
   workflow_dispatch:
 
@@ -24,7 +25,9 @@ jobs:
           python-version: "3.12"
       - name: Install image pipeline and ONNX Runtime CPU
         run: |
-          python -m pip install numpy opencv-python-headless "onnxruntime>=1.22,<2"
+          python -m pip install numpy opencv-python-headless "onnxruntime>=1.22,<2" "onnx>=1.16,<2"
+      - name: Exercise synthetic Add/Conv diagnostic on CPU (no physical GPU in CI)
+        run: python -u -m scripts.diagnose_directml --devices
       - name: Download the exact published ONNX graph and external tensor data
         run: python -m scripts.install_scunet --tile-size 256
       - name: Execute real SCUNet ONNX inference in CPU (not a GPU benchmark)
