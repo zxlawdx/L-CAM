@@ -121,3 +121,11 @@ def test_scunet_tile_engine_retains_native_frame_shape_with_static_input():
     assert enhanced.shape == raw.shape
     assert enhanced.dtype == np.uint8
     assert np.abs(enhanced.astype(np.int16) - raw.astype(np.int16)).max() <= 1
+
+
+def test_unvalidated_scunet_tile_size_fails_before_gpu_session():
+    model = Spec()
+    model.tile_size = 384
+    import pytest
+    with pytest.raises(RuntimeError, match="256"):
+        OnnxRuntimeEngine(model, "directml:0", runtime=FakeRuntime)
