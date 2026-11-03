@@ -176,3 +176,29 @@ Opcional: `python -m scripts.diagnose_scunet_variants --inspect-only` lista os o
 Não ative SCUNet no streaming ainda. Se a CPU 64×64 falhar, não tire conclusões sobre GPU antes de investigar o formato da entrada. Se uma combinação de GPU passar, será necessário suportá-la explicitamente no carregador e medi-la com blocos reais — não se deve presumir que a sessão padrão do L-CAM herdará as opções do diagnóstico.
 
 Há pacotes `onnxruntime-gpu` para Python 3.14/Windows, mas eles **não devem ser instalados por cima de `onnxruntime-directml` no mesmo ambiente**. Em caso de incompatibilidade persistente, considerar subprocesso CUDA em venv independente, após verificar driver e dependências CUDA/cuDNN.
+
+## Correção validada no Acer Nitro: DirectML ORT_ENABLE_BASIC com dimensões fixas
+
+**Resultado real relatado pelo usuário no Windows 11 / ONNX Runtime DirectML 1.24.4**: ambos os adaptadores DirectML **0 e 1** falharam com `0xC0000005` ao usar o SCUNet com `ORT_DISABLE_ALL`, mas executaram **com sucesso** em `ORT_ENABLE_BASIC`, com as dimensões simbólicas de entrada substituídas por valores fixos `batch=1, height=tile_size, width=tile_size`. Em 64, 128 e 256 pixels, o perfil reportou 491 nós DirectML e 70 nós CPU para cada tentativa. Isso significa execução **híbrida**, não aceleração GPU de todas as operações.
+
+Essa configuração foi integrada ao **`OnnxRuntimeEngine` de produção**, aplicada somente ao arquivo SCUNet Real-PSNR conhecido pelo SHA-256. Para outros modelos, o ONNX Runtime mantém o comportamento anterior. O subprocesso de segurança continua obrigatório; uma eventual falha de driver não é capturada por `try/except` no mesmo processo.
+
+O tamanho **256 × 256** é o maior bloco que efetivamente passou nos testes do usuário. O instalador SCUNet agora usa 256 como padrão. Quem instalou antes usando 384 precisa **atualizar apenas o manifesto**, sem baixar novamente os pesos:
+
+```powershell
+git pull --ff-only origin feat/scunet-real-denoise
+python -m scripts.install_scunet --tile-size 256
+python -u -m scripts.diagnose_scunet
+```
+
+O `install_scunet` verifica os SHA-256 locais, reutiliza os dois arquivos presentes e regrava `scunet_real_psnr.json` com `tile_size=256`. O diagnóstico executa a configuração **real do L-CAM** (não somente a variante experimental) na CPU e nos adaptadores DirectML separadamente. Só ative o SCUNet em Vela após pelo menos um adaptador passar no diagnóstico, e selecione esse mesmo adaptador na interface.
+
+Para medir velocidade sem câmera, ainda com o aplicativo fechado:
+
+```powershell
+python -u -m scripts.benchmark_scunet --provider directml --dml-device-id 0 --tile-size 256 --width 640 --height 360 --frames 2
+```
+
+É um comando com inferência ONNX real que pode ser mais lento que o preview. **Não há promessa de 30 FPS a 720p na GTX 1650 de 4 GB**. O modelo usa muitos blocos para um quadro 1280 × 720; o CPU/GPU misto também pode limitar throughput. Se o frame ultrapassar o timeout do worker no streaming, o L-CAM deve voltar automaticamente aos filtros clássicos. Se a GPU passar no teste 256, mas a prévia ficar lenta, priorizar SCUNet no modo **foto/pós-processamento** e um denoiser muito menor para vídeo ao vivo.
+
+No status do Vela, a sessão SCUNet expõe o adaptador, o bloco efetivo e `ONNX BASIC + dimensões fixas`, para que o usuário saiba qual perfil foi carregado. A CI valida a configuração com fakes e testa o modelo verdadeiro em CPU; **não executa GPU NVIDIA nem DirectML em hardware igual ao do usuário**.
