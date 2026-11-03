@@ -104,7 +104,7 @@ def download_asset(asset: DownloadAsset, directory: Path, *, opener=None, attemp
     raise RuntimeError("Falha inesperada no downloader.")
 
 
-def install_model(directory: Path, tile_size: int = 384, tile_overlap: int = 32, *, opener=None) -> Path:
+def install_model(directory: Path, tile_size: int = 256, tile_overlap: int = 32, *, opener=None) -> Path:
     if tile_size not in (256, 320, 384, 448, 512):
         raise ValueError("tile_size deve ser 256, 320, 384, 448 ou 512.")
     if not 16 <= tile_overlap < tile_size // 2 or tile_overlap % 8:
@@ -144,7 +144,7 @@ def install_model(directory: Path, tile_size: int = 384, tile_overlap: int = 32,
 def main() -> None:
     parser = argparse.ArgumentParser(description="Instala SCUNet Real-PSNR ONNX autenticado para L-CAM")
     parser.add_argument("--output", type=Path, default=DEFAULT_DIR)
-    parser.add_argument("--tile-size", type=int, default=384, help="Use 256 para reduzir consumo de VRAM")
+    parser.add_argument("--tile-size", type=int, default=256, help="256 validado com DirectML BASIC; mais blocos podem reduzir FPS")
     parser.add_argument("--overlap", type=int, default=32)
     args = parser.parse_args()
     try:
