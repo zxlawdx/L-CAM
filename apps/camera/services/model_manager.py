@@ -9,7 +9,9 @@ import cv2
 import numpy as np
 
 from .filters import BasicEnhancer
+from .profiled import ProfiledEnhancer
 from .inference import OnnxModelSpec, OnnxRuntimeEngine
+from .isolated_inference import IsolatedOnnxRuntimeEngine
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +75,13 @@ class NeuralEnhancementProcessor:
         self.classical.reset()
 
     def fallback(self):
-        return BasicEnhancer()
+        return ProfiledEnhancer()
 
 
 class AsyncModelManager:
     """Load one model in the background; publish a processor only after success."""
 
-    def __init__(self, on_ready, processor_factory=NeuralEnhancementProcessor, engine_factory=OnnxRuntimeEngine):
+    def __init__(self, on_ready, processor_factory=NeuralEnhancementProcessor, engine_factory=IsolatedOnnxRuntimeEngine):
         self._on_ready = on_ready
         self._processor_factory = processor_factory
         self._engine_factory = engine_factory
@@ -88,11 +90,12 @@ class AsyncModelManager:
         self._generation = 0
         self._closed = False
         self._worker = None
+        self._active_engine = None
 
     def load(self, manifest_path: str, preference: str = "auto") -> dict:
         if not isinstance(manifest_path, str) or not 1 <= len(manifest_path) <= 4096:
             raise ValueError("Caminho do manifest inválido.")
-        if preference not in ("auto", "cpu", "cuda", "directml"):
+        if preference not in ("auto", "cpu", "cuda", "directml", "directml:0", "directml:1"):
             raise ValueError("Provedor inválido.")
         with self._lock:
             if self._closed:
@@ -110,18 +113,31 @@ class AsyncModelManager:
         return self.status()
 
     def _load(self, path, preference, generation) -> None:
+        engine = None
+        published = False
         try:
             spec = OnnxModelSpec.load(path)
             engine = self._engine_factory(spec, preference)
             processor = self._processor_factory(engine)
             with self._lock:
                 if self._closed or generation != self._generation:
+                    close = getattr(engine, "close", None)
+                    if callable(close):
+                        close()
                     return
+                previous = self._active_engine
                 self._on_ready(processor)
+                self._active_engine = engine
+                published = True
+                if previous is not None:
+                    self._close_later(previous)
                 self._state = {
                     "state": "ready",
                     "name": spec.name,
                     "provider": engine.provider,
+                    "device_id": engine.dml_device_id if engine.provider == "DmlExecutionProvider" else None,
+                    "tile_size": getattr(engine, "tile_size", spec.tile_size),
+                    "graph_profile": getattr(engine, "graph_profile", "default"),
                     "task": spec.task,
                     "error": None,
                     "license": spec.license,
@@ -129,6 +145,8 @@ class AsyncModelManager:
                 }
         except Exception as exc:
             logger.exception("Não foi possível carregar o modelo ONNX.")
+            if engine is not None and not published:
+                self._close_later(engine)
             with self._lock:
                 if not self._closed and generation == self._generation:
                     self._state = {
@@ -136,21 +154,38 @@ class AsyncModelManager:
                         "task": None, "error": str(exc)[:700],
                     }
 
+    @staticmethod
+    def _close_later(engine) -> None:
+        close = getattr(engine, "close", None)
+        if callable(close):
+            threading.Thread(
+                target=close, name="lcam-onnx-cleanup", daemon=True
+            ).start()
+
     def report_runtime_error(self, message: str) -> None:
         """Invalidate the selected model after a processing failure."""
         with self._lock:
             self._generation += 1
+            old = self._active_engine
+            self._active_engine = None
             self._state = {
                 "state": "error", "name": None, "provider": None,
                 "task": None, "error": str(message)[:700],
             }
+        if old is not None:
+            self._close_later(old)
 
     def unload(self) -> dict:
         with self._lock:
             self._generation += 1
-            self._on_ready(BasicEnhancer())
+            self._on_ready(ProfiledEnhancer())
+            old = self._active_engine
+            self._active_engine = None
             self._state = {"state": "off", "name": None, "provider": None, "task": None, "error": None}
-            return dict(self._state)
+            result = dict(self._state)
+        if old is not None:
+            self._close_later(old)
+        return result
 
     def status(self) -> dict:
         with self._lock:
@@ -160,3 +195,12 @@ class AsyncModelManager:
         with self._lock:
             self._generation += 1
             self._closed = True
+            old = self._active_engine
+            self._active_engine = None
+        if old is not None:
+            close = getattr(old, "close", None)
+            if callable(close):
+                try:
+                    close()  # Ensure child is gone before desktop app exits.
+                except Exception:
+                    logger.exception("Falha ao finalizar processo ONNX isolado.")

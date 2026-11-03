@@ -83,7 +83,7 @@ class LCamBridge(StarterBridge):
     def camera_configure(self, settings: dict) -> dict:
         if not isinstance(settings, dict):
             return {"ok": False, "error": "Configurações inválidas."}
-        fields = {"brightness", "contrast", "saturation", "denoise", "mode", "strength", "sharpness"}
+        fields = {"brightness", "contrast", "saturation", "denoise", "mode", "strength", "sharpness", "profile"}
         if set(settings) - fields:
             return {"ok": False, "error": "Configuração desconhecida."}
         return self._result(self.studio.configure, **settings)
@@ -123,3 +123,11 @@ class LCamBridge(StarterBridge):
 
     def camera_presets_delete(self, name: str) -> dict:
         return self._result(self.studio.presets_delete, name)
+
+    def camera_model_catalog(self) -> dict:
+        """Report SCUNet installation availability to the Vela UI."""
+        return self._result(self.studio.model_catalog)
+
+    def camera_scunet_load(self, provider: str = "auto") -> dict:
+        """Activate the locally verified SCUNet model without manual paths."""
+        return self._result(self.studio.model_load_default, provider)

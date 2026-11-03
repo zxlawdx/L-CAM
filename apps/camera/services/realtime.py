@@ -68,7 +68,8 @@ class RealtimePipeline:
         with self._settings_lock:
             old = self._settings
             self._settings = settings
-            if old.mode != settings.mode or old.denoise != settings.denoise:
+            if (old.mode != settings.mode or old.denoise != settings.denoise
+                    or old.profile != settings.profile):
                 self._needs_reset = True
 
     def set_processor(self, processor) -> None:
@@ -149,12 +150,18 @@ class RealtimePipeline:
                     logger.exception("Falha no processamento do quadro.")
                     fallback = getattr(processor, "fallback", None)
                     if callable(fallback):
-                        # Safe CPU/classic fallback on any failed ONNX inference.
-                        self.set_processor(fallback())
-                        if callable(self._on_processor_error):
-                            self._on_processor_error(str(exc))
-                        with self._stats_lock:
-                            self._error = "IA desativada após erro; processamento clássico ativo: " + str(exc)
+                        # Never let a stale model failure overwrite a newer
+                        # processor selected by the user while a frame ran.
+                        with self._settings_lock:
+                            was_current = self._processor is processor
+                            if was_current:
+                                self._processor = fallback()
+                                self._needs_reset = True
+                        if was_current:
+                            if callable(self._on_processor_error):
+                                self._on_processor_error(str(exc))
+                            with self._stats_lock:
+                                self._error = "IA desativada após erro; processamento clássico ativo: " + str(exc)
                         failures = 0
                         continue
                     if failures >= 3:

@@ -13,6 +13,7 @@ from .capture import CameraCapture
 from .contracts import CameraSource, FrameProcessor, PreviewEncoder, RecordingSink
 from .encoding import JpegPreviewEncoder
 from .filters import BasicEnhancer, ImageSettings
+from .profiled import ProfiledEnhancer
 from .realtime import RealtimePipeline
 from .model_manager import AsyncModelManager
 from .recorder import VideoRecorder
@@ -38,7 +39,7 @@ class CameraStudio:
         encoder: PreviewEncoder | None = None,
     ):
         self._camera = camera if camera is not None else CameraCapture()
-        self._processor = processor if processor is not None else BasicEnhancer()
+        self._processor = processor if processor is not None else ProfiledEnhancer()
         self._recorder = recorder if recorder is not None else VideoRecorder()
         self._encoder = encoder if encoder is not None else JpegPreviewEncoder(86)
         self._recording = RecordingWorker(self._recorder)
@@ -62,7 +63,31 @@ class CameraStudio:
 
     def _handle_processor_error(self, message: str) -> None:
         self._models.report_runtime_error(message)
-        self._install_processor(BasicEnhancer())
+        self._install_processor(ProfiledEnhancer())
+
+    @staticmethod
+    def _scunet_manifest() -> Path:
+        return Path(__file__).resolve().parents[3] / "models" / "scunet_real_psnr" / "scunet_real_psnr.json"
+
+    def model_catalog(self) -> dict:
+        manifest = self._scunet_manifest()
+        return {
+            "models": [{
+                "name": "SCUNet Real-PSNR",
+                "description": "Redução de ruído real por blocos nativos — experimental",
+                "installed": manifest.is_file(),
+                "manifest": str(manifest) if manifest.is_file() else None,
+            }]
+        }
+
+    def model_load_default(self, provider: str = "auto") -> dict:
+        manifest = self._scunet_manifest()
+        if not manifest.is_file():
+            raise RuntimeError(
+                "SCUNet ainda não instalado. Execute "
+                "python -m scripts.install_scunet no ambiente do L-CAM."
+            )
+        return self._models.load(str(manifest), provider)
 
     def model_load(self, manifest_path: str, provider: str = "auto") -> dict:
         return self._models.load(manifest_path, provider)
@@ -125,13 +150,14 @@ class CameraStudio:
 
     def configure(
         self, *, brightness=0, contrast=1.0, saturation=1.0,
-        denoise=False, mode="off", strength=0.65, sharpness=0.0
+        denoise=False, mode="off", strength=0.65, sharpness=0.0,
+        profile="fast"
     ) -> dict:
         # Explicit immutable validation before updating the active pipeline.
         settings = ImageSettings(
             brightness=brightness, contrast=contrast,
             saturation=saturation, denoise=denoise,
-            mode=mode, strength=strength, sharpness=sharpness,
+            mode=mode, strength=strength, sharpness=sharpness, profile=profile,
         )
         with self._lock:
             self._settings = settings
@@ -185,6 +211,7 @@ class CameraStudio:
             "latency_ms": round((now - packet.captured_at) * 1000, 1),
             "dropped_frames": telemetry["dropped_preprocessing"],
             "mode": self._settings.mode,
+            "profile": self._settings.profile,
         }
 
     def record_start(self, fps: float = 30.0, audio_device: int | None = None) -> dict:

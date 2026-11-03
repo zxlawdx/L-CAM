@@ -1,0 +1,62 @@
+name: SCUNet — real ONNX model smoke
+
+on:
+  push:
+    branches: ["feat/scunet-real-denoise"]
+    paths:
+      - "apps/camera/services/inference.py"
+      - "apps/camera/services/isolated_inference.py"
+      - "apps/camera/services/onnx_child.py"
+      - "apps/camera/services/onnx_wire.py"
+      - "scripts/install_scunet.py"
+      - "scripts/benchmark_scunet.py"
+      - "scripts/diagnose_scunet_variants.py"
+      - "scripts/diagnose_directml.py"
+      - ".github/workflows/scunet-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-real-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install image pipeline and ONNX Runtime CPU
+        run: |
+          python -m pip install numpy opencv-python-headless "onnxruntime>=1.22,<2" "onnx>=1.16,<2"
+      - name: Exercise synthetic Add/Conv diagnostic on CPU (no physical GPU in CI)
+        run: python -u -m scripts.diagnose_directml --devices
+      - name: Download the exact published ONNX graph and external tensor data
+        run: python -m scripts.install_scunet --tile-size 256
+      - name: Inspect actual SCUNet graph and operators without allocating GPU
+        run: python -m scripts.diagnose_scunet_variants --inspect-only
+      - name: Exercise 64px SCUNet CPU baseline with fixed ONNX symbolic dimensions
+        run: python -u -m scripts.diagnose_scunet_variants --child --provider cpu --device 0 --size 64 --optimization disable
+      - name: Execute real SCUNet ONNX inference in CPU (not a GPU benchmark)
+        run: python -m scripts.benchmark_scunet --provider cpu --width 256 --height 256 --frames 1
+      - name: Verify native isolation with real pretrained SCUNet in child process
+        shell: python
+        run: |
+          import numpy as np
+          import sys
+          from pathlib import Path
+          # GitHub's python shell writes the script in _temp, not the repo.
+          sys.path.insert(0, str(Path.cwd()))
+          from apps.camera.services.inference import OnnxModelSpec
+          from apps.camera.services.isolated_inference import IsolatedOnnxRuntimeEngine
+
+          spec = OnnxModelSpec.load(Path("models/scunet_real_psnr/scunet_real_psnr.json"))
+          engine = IsolatedOnnxRuntimeEngine(spec, "cpu", startup_timeout=120, frame_timeout=120)
+          try:
+              image = np.full((256, 256, 3), 75, dtype=np.uint8)
+              result = engine.enhance(image)
+              assert result.shape == image.shape
+              assert result.dtype == np.uint8
+              assert engine._process.poll() is None
+              print("Verified ONNX child session and full-frame binary IPC")
+          finally:
+              engine.close()
+          assert engine._process.poll() is not None

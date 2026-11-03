@@ -60,6 +60,7 @@
       refreshAudioDevices();
       refreshPresets();
       refreshModelState();
+      refreshScunet();
     } catch (error) {
       if (disposed) return;
       ready = false;
@@ -76,7 +77,8 @@
       denoise: $("denoise").checked,
       mode: $("mode").value,
       strength: Number($("strength").value) / 100,
-      sharpness: Number($("sharpness").value) / 100
+      sharpness: Number($("sharpness").value) / 100,
+      profile: $("profile").value
     };
   }
   function labels() {
@@ -86,6 +88,13 @@
     $("strength-val").textContent = $("strength").value + "%";
     $("sharpness-val").textContent = $("sharpness").value + "%";
     $("mode-help").textContent = modes[$("mode").value] || "";
+    const fast = $("profile").value === "fast";
+    $("profile-help").textContent = fast
+      ? "CPU leve: sombras equilibradas, proteção de realces e ruído cromático em meia resolução, sem borrar os detalhes da luminância."
+      : "Modo clássico anterior: redução temporal + bilateral + CLAHE; costuma consumir mais CPU.";
+    $("denoise-label").textContent = fast
+      ? "Reduzir ruído de cor (preserva textura)"
+      : "Reduzir ruído de cor e textura (legado)";
     $("strength").disabled = $("mode").value === "off" && !$("denoise").checked;
   }
   async function syncSettings() {
@@ -104,12 +113,24 @@
     $("resolution").textContent = result.width + " × " + result.height;
     $("fps").textContent = "Captura " + result.capture_fps + " · Process. " + result.process_fps + " · Prévia " + result.preview_fps + " FPS";
     $("processing").textContent = result.processing_ms + " ms/filtro · " + result.latency_ms + " ms/latência";
+    const capture = Number(result.capture_fps);
+    const processed = Number(result.process_fps);
+    if (Number.isFinite(capture) && capture > 0) {
+      $("capture-hint").textContent = capture < 18 && processed >= capture * 0.8
+        ? "Captura real: " + capture.toFixed(1) + " FPS. O filtro consegue acompanhar; baixa luz/exposição automática ou driver podem limitar a câmera. Teste uma luz frontal e rode diagnose_exposure."
+        : "Captura real: " + capture.toFixed(1) + " FPS · processamento: " + processed.toFixed(1) + " FPS. Medidos separadamente; prévia não inventa quadros.";
+    }
   }
   async function preview() {
     if (disposed || !active) return;
     try {
-      const result = await call("camera_frame", originalPreview);
+      const result = await call("camera_frame", originalPreview, lastSequence);
       if (disposed || !active) return;
+      if (result.waiting || result.unchanged) {
+        previewTimer = setTimeout(preview, 30);
+        return;
+      }
+      if (Number.isInteger(result.sequence)) lastSequence = result.sequence;
       $("frame").src = result.image;
       $("frame").hidden = false;
       $("empty").hidden = true;
@@ -196,11 +217,13 @@
   }
   function compare() {
     originalPreview = !originalPreview;
+    lastSequence = -1;
     $("compare").setAttribute("aria-pressed", String(originalPreview));
     $("compare").textContent = originalPreview ? "Ver aprimorada" : "Ver original";
   }
   function reset() {
     $("mode").value = "auto";
+    $("profile").value = "fast";
     $("strength").value = "40";
     $("sharpness").value = "10";
     $("brightness").value = "0";
@@ -217,7 +240,7 @@
   $("finish").addEventListener("click", stopRecording);
   $("compare").addEventListener("click", compare);
   $("reset").addEventListener("click", reset);
-  for (const name of ["mode", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
+  for (const name of ["mode", "profile", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
     $(name).addEventListener("input", () => {
       labels();
       clearTimeout(adjustmentTimer);
@@ -301,6 +324,7 @@
       const values = result.settings;
       for (const field of ["brightness", "contrast", "saturation"]) $(field).value = values[field];
       $("mode").value = values.mode;
+      $("profile").value = values.profile || "fast";
       $("strength").value = Math.round(values.strength * 100);
       $("sharpness").value = Math.round(values.sharpness * 100);
       $("denoise").checked = !!values.denoise;
@@ -331,7 +355,11 @@
         : state === "error" ? "IA indisponível" : "IA desligada";
     }
     if (state === "ready") {
-      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + " · " + result.task + ".";
+      const adapter = result.device_id != null ? " · adaptador " + result.device_id : "";
+      const tile = result.tile_size ? " · blocos " + result.tile_size + "px" : "";
+      const graph = result.graph_profile === "basic+fixed_dims"
+        ? " · ONNX BASIC + dimensões fixas" : "";
+      node.textContent = "IA ativa: " + result.name + " · sessão " + result.provider + adapter + tile + graph + " · " + result.task + ".";
     } else if (state === "loading") {
       node.textContent = "Verificando hash, licença informada e preparando sessão ONNX...";
     } else if (state === "error") {
@@ -340,6 +368,48 @@
       node.textContent = "IA desligada — processamento clássico ativo.";
     }
   }
+
+  async function refreshScunet() {
+    if (!ready || disposed) return;
+    try {
+      const result = await call("camera_model_catalog");
+      const model = (result.models || [])[0];
+      const installed = !!model?.installed;
+      $("scunet-activate").disabled = !installed;
+      $("scunet-status").textContent = installed
+        ? "SCUNet Real-PSNR instalado: pronto para testar DirectML/CPU."
+        : "SCUNet não instalado. Execute o script setup_scunet_windows.ps1.";
+      if (installed && $("model-manifest") && !$("model-manifest").value) {
+        $("model-manifest").value = model.manifest;
+      }
+    } catch (error) {
+      $("scunet-status").textContent = "Erro ao verificar modelo: " + error.message;
+    }
+  }
+  async function activateScunet() {
+    $("scunet-activate").disabled = true;
+    // DnCNN's 320x180 upscaling caused blur. SCUNet instead preserves the
+    // camera's full resolution and intentionally disables stacked denoisers.
+    $("mode").value = "off";
+    $("profile").value = "fast";
+    $("strength").value = "40";
+    $("sharpness").value = "10";
+    $("denoise").checked = false;
+    labels();
+    try {
+      await syncSettings();
+      const selected = $("model-provider").value;
+      showModelState(await call("camera_scunet_load", selected));
+      notify("SCUNet: preparando ONNX. Aguarde o indicador IA ativa.");
+    } catch (error) {
+      showModelState({state: "error", error: error.message});
+      notify(error.message, true);
+    } finally {
+      await refreshScunet();
+    }
+  }
+  $("scunet-activate").addEventListener("click", activateScunet);
+
   async function refreshModelState() {
     if (!ready || disposed) return;
     try {
