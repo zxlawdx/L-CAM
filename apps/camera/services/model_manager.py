@@ -135,6 +135,8 @@ class AsyncModelManager:
                     "name": spec.name,
                     "provider": engine.provider,
                     "device_id": engine.dml_device_id if engine.provider == "DmlExecutionProvider" else None,
+                    "tile_size": getattr(engine, "tile_size", spec.tile_size),
+                    "graph_profile": getattr(engine, "graph_profile", "default"),
                     "task": spec.task,
                     "error": None,
                     "license": spec.license,
