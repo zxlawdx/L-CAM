@@ -28,6 +28,7 @@ class ImageSettings:
     mode: str = "off"
     strength: float = 0.65
     sharpness: float = 0.0
+    profile: str = "fast"
 
     def __post_init__(self) -> None:
         if type(self.brightness) is not int or not -100 <= self.brightness <= 100:
@@ -44,6 +45,8 @@ class ImageSettings:
             raise ValueError("Redução de ruído deve ser booleana.")
         if self.mode not in MODES:
             raise ValueError("Modo de aprimoramento desconhecido.")
+        if self.profile not in ("fast", "legacy"):
+            raise ValueError("Perfil de vídeo desconhecido (fast/legacy).")
 
 
 @lru_cache(maxsize=64)
