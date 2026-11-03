@@ -21,6 +21,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 _MAX_MODEL_BYTES = 400 * 1024 * 1024
 
+# Only this exact, hash-verified ONNX artifact has been confirmed by real
+# Windows tests to require Basic optimizations + fixed symbolic dimensions.
+# Do not apply SCUNet-specific settings indiscriminately to other ONNX models.
+SCUNET_REAL_PSNR_SHA256 = "231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c"
+
 
 @dataclass(frozen=True, slots=True)
 class OnnxModelSpec:
@@ -174,6 +179,22 @@ class OnnxRuntimeEngine:
                 if provider == "DmlExecutionProvider":
                     options.enable_mem_pattern = False
                     options.execution_mode = self._ort.ExecutionMode.ORT_SEQUENTIAL
+                    if spec.sha256 == SCUNET_REAL_PSNR_SHA256:
+                        # Proven on Windows 11 with ORT DirectML 1.24.4:
+                        # ORT_DISABLE_ALL causes native 0xC0000005 while
+                        # ORT_ENABLE_BASIC + static tile dims executes GPU nodes.
+                        # Each image tile is exactly tile_size x tile_size.
+                        if spec.tile_size is None:
+                            raise ValueError("SCUNet DirectML exige tile_size.")
+                        options.graph_optimization_level = (
+                            self._ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                        )
+                        for symbol, value in (
+                            ("batch", 1),
+                            ("height", spec.tile_size),
+                            ("width", spec.tile_size),
+                        ):
+                            options.add_free_dimension_override_by_name(symbol, value)
                 providers = [provider]
                 if provider != "CPUExecutionProvider" and "CPUExecutionProvider" in available:
                     providers.append("CPUExecutionProvider")
