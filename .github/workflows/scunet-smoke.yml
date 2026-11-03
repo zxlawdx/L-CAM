@@ -33,7 +33,10 @@ jobs:
         shell: python
         run: |
           import numpy as np
+          import sys
           from pathlib import Path
+          # GitHub's python shell writes the script in _temp, not the repo.
+          sys.path.insert(0, str(Path.cwd()))
           from apps.camera.services.inference import OnnxModelSpec
           from apps.camera.services.isolated_inference import IsolatedOnnxRuntimeEngine
 
