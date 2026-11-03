@@ -195,4 +195,9 @@ class AsyncModelManager:
             old = self._active_engine
             self._active_engine = None
         if old is not None:
-            self._close_later(old)
+            close = getattr(old, "close", None)
+            if callable(close):
+                try:
+                    close()  # Ensure child is gone before desktop app exits.
+                except Exception:
+                    logger.exception("Falha ao finalizar processo ONNX isolado.")
