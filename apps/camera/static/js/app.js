@@ -77,7 +77,8 @@
       denoise: $("denoise").checked,
       mode: $("mode").value,
       strength: Number($("strength").value) / 100,
-      sharpness: Number($("sharpness").value) / 100
+      sharpness: Number($("sharpness").value) / 100,
+      profile: $("profile").value
     };
   }
   function labels() {
@@ -87,6 +88,13 @@
     $("strength-val").textContent = $("strength").value + "%";
     $("sharpness-val").textContent = $("sharpness").value + "%";
     $("mode-help").textContent = modes[$("mode").value] || "";
+    const fast = $("profile").value === "fast";
+    $("profile-help").textContent = fast
+      ? "CPU leve: sombras equilibradas, proteção de realces e ruído cromático em meia resolução, sem borrar os detalhes da luminância."
+      : "Modo clássico anterior: redução temporal + bilateral + CLAHE; costuma consumir mais CPU.";
+    $("denoise-label").textContent = fast
+      ? "Reduzir ruído de cor (preserva textura)"
+      : "Reduzir ruído de cor e textura (legado)";
     $("strength").disabled = $("mode").value === "off" && !$("denoise").checked;
   }
   async function syncSettings() {
@@ -208,6 +216,7 @@
   }
   function reset() {
     $("mode").value = "auto";
+    $("profile").value = "fast";
     $("strength").value = "40";
     $("sharpness").value = "10";
     $("brightness").value = "0";
@@ -224,7 +233,7 @@
   $("finish").addEventListener("click", stopRecording);
   $("compare").addEventListener("click", compare);
   $("reset").addEventListener("click", reset);
-  for (const name of ["mode", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
+  for (const name of ["mode", "profile", "strength", "sharpness", "brightness", "contrast", "saturation", "denoise"]) {
     $(name).addEventListener("input", () => {
       labels();
       clearTimeout(adjustmentTimer);
@@ -308,6 +317,7 @@
       const values = result.settings;
       for (const field of ["brightness", "contrast", "saturation"]) $(field).value = values[field];
       $("mode").value = values.mode;
+      $("profile").value = values.profile || "fast";
       $("strength").value = Math.round(values.strength * 100);
       $("sharpness").value = Math.round(values.sharpness * 100);
       $("denoise").checked = !!values.denoise;
@@ -374,6 +384,7 @@
     // DnCNN's 320x180 upscaling caused blur. SCUNet instead preserves the
     // camera's full resolution and intentionally disables stacked denoisers.
     $("mode").value = "off";
+    $("profile").value = "fast";
     $("strength").value = "40";
     $("sharpness").value = "10";
     $("denoise").checked = false;
