@@ -38,6 +38,13 @@ def serve(manifest: str, provider: str) -> int:
             "ok": True, "type": "ready",
             "provider": engine.provider,
             "device_id": engine.dml_device_id if engine.provider == "DmlExecutionProvider" else None,
+            "tile_size": spec.tile_size,
+            "graph_profile": (
+                "basic+fixed_dims"
+                if engine.provider == "DmlExecutionProvider"
+                and spec.sha256 == "231be201ab413dbc999d7951caa9844846b93a12a40a41e037d6b5888ed4e88c"
+                else "default"
+            ),
         })
     except Exception as exc:
         log.exception("Falha preparando ONNX no processo isolado")
